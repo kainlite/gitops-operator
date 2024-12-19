@@ -3,7 +3,7 @@
 [![docker image](https://img.shields.io/docker/pulls/kainlite/gitops-operator.svg)](
 https://hub.docker.com/r/kainlite/gitops-operator/tags/)
 
-This was created based in the example [here](https://github.com/kube-rs/gitops-operator) from [kube-rs](https://github.com/kube-rs)
+This was created based in the example [here](https://github.com/kube-rs/version-rs) from [kube-rs](https://github.com/kube-rs)
 
 Basically this is a GitOps controller working in pull mode, triggered by Kubernetes on a readiness check (this is a
 hack) to trigger our fake reconcile method, this can be considered a toy controller or learning project.
