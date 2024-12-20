@@ -9,7 +9,7 @@ fmt:
   cargo +nightly fmt
 
 build:
-  docker build -t ghcr.io/kube-rs/version-rs:local .
+  docker build -t kainlite/gitops-operator:local .
 
 [private]
 release:
@@ -17,6 +17,6 @@ release:
 
 [private]
 import:
-  k3d image import ghcr.io/kube-rs/version-rs:local --cluster main
-  sd "image: .*" "image: ghcr.io/kube-rs/version-rs:local" deployment.yaml
+  k3d image import kainlite/gitops-operator:local --cluster main
+  sd "image: .*" "image: kainlite/gitops-operator:local" deployment.yaml
   kubectl apply -f deployment.yaml

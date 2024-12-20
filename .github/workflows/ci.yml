@@ -38,6 +38,8 @@ jobs:
         with:
           images: ${{ github.repository }}
           tags: |
+            type=ref,event=sha
+            type=ref,event=branch
             type=pep440,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=pr
