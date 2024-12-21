@@ -8,8 +8,7 @@ RUN --mount=type=cache,target=/volume/target \
     cargo build --release --bin gitops-operator && \
     mv /volume/target/x86_64-unknown-linux-musl/release/gitops-operator .
 
-# FROM cgr.dev/chainguard/static
-FROM ubuntu
+FROM cgr.dev/chainguard/static
 
 COPY --from=builder --chown=nonroot:nonroot /volume/gitops-operator /app/
 

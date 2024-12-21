@@ -89,13 +89,13 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
         }
 
         // Perform reconciliation
-        let app_local_path = format!("/tmp/app_{}", &entry.name);
-        let manifest_local_path = format!("/tmp/manifest_{}", &entry.name);
+        let app_local_path = format!("/tmp/app-{}", &entry.name);
+        let manifest_local_path = format!("/tmp/manifest-{}", &entry.name);
 
         clone_repo(&entry.config.app_repository, &app_local_path);
         clone_repo(&entry.config.manifest_repository, &manifest_local_path);
         let _ = patch_deployment_and_commit(
-            format!("/tmp/{}", &entry.config.image_name).as_ref(),
+            format!("/tmp/manifest-{}", &entry.name).as_ref(),
             &entry.config.deployment_path,
             &entry.config.image_name,
         );

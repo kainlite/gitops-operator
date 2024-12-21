@@ -1,11 +1,46 @@
-use git2::{
-    build::CheckoutBuilder, build::RepoBuilder, Cred, Error as GitError, FetchOptions, RemoteCallbacks,
-    Repository,
-};
+use git2::{build::RepoBuilder, Cred, Error as GitError, FetchOptions, RemoteCallbacks, Repository};
 use std::env;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+fn normal_merge(
+    repo: &Repository,
+    local: &git2::AnnotatedCommit,
+    remote: &git2::AnnotatedCommit,
+) -> Result<(), git2::Error> {
+    let local_tree = repo.find_commit(local.id())?.tree()?;
+    let remote_tree = repo.find_commit(remote.id())?.tree()?;
+    let ancestor = repo.find_commit(repo.merge_base(local.id(), remote.id())?)?.tree()?;
+    let mut idx = repo.merge_trees(&ancestor, &local_tree, &remote_tree, None)?;
+
+    if idx.has_conflicts() {
+        println!("Merge conflicts detected...");
+        repo.checkout_index(Some(&mut idx), None)?;
+        return Ok(());
+    }
+    let result_tree = repo.find_tree(idx.write_tree_to(repo)?)?;
+    // now create the merge commit
+    let msg = format!("Merge: {} into {}", remote.id(), local.id());
+    let sig = repo.signature()?;
+    let local_commit = repo.find_commit(local.id())?;
+    let remote_commit = repo.find_commit(remote.id())?;
+    // Do our merge commit and set current branch head to that commit.
+    let _merge_commit = repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        &msg,
+        &result_tree,
+        &[&local_commit, &remote_commit],
+    )?;
+    // Set working tree to match head.
+    repo.checkout_head(None)?;
+    Ok(())
+}
+
 pub fn clone_or_update_repo(url: &str, repo_path: PathBuf) -> Result<(), GitError> {
+    println!("Cloning or updating repository from: {}", &url);
+
     // Setup SSH key authentication
     let mut callbacks = RemoteCallbacks::new();
     callbacks.credentials(|_url, username_from_url, _allowed_types| {
@@ -26,9 +61,12 @@ pub fn clone_or_update_repo(url: &str, repo_path: PathBuf) -> Result<(), GitErro
     // Prepare fetch options
     let mut fetch_options = FetchOptions::new();
     fetch_options.remote_callbacks(callbacks);
+    fetch_options.download_tags(git2::AutotagOption::All);
 
     // Check if repository already exists
     if repo_path.exists() {
+        println!("Repository already exists, pulling...");
+
         // Open existing repository
         let repo = Repository::open(&repo_path)?;
 
@@ -38,6 +76,8 @@ pub fn clone_or_update_repo(url: &str, repo_path: PathBuf) -> Result<(), GitErro
         // Pull changes (merge)
         pull_repo(&repo, &fetch_options)?;
     } else {
+        println!("Repository does not exist, cloning...");
+
         // Clone new repository
         clone_new_repo(url, &repo_path, fetch_options)?;
     }
@@ -47,17 +87,22 @@ pub fn clone_or_update_repo(url: &str, repo_path: PathBuf) -> Result<(), GitErro
 
 /// Fetch changes for an existing repository
 fn fetch_existing_repo(repo: &Repository, fetch_options: &mut FetchOptions) -> Result<(), GitError> {
+    println!("Fetching changes for existing repository");
+
     // Find the origin remote
     let mut remote = repo.find_remote("origin")?;
 
     // Fetch all branches
-    remote.fetch::<String>(&[], Some(fetch_options), None)?;
+    let refs = &["refs/heads/master:refs/remotes/origin/master"];
+
+    remote.fetch(refs, Some(fetch_options), None)?;
 
     Ok(())
 }
 
 /// Clone a new repository
 fn clone_new_repo(url: &str, local_path: &Path, fetch_options: FetchOptions) -> Result<Repository, GitError> {
+    println!("Cloning repository from: {}", &url);
     // Prepare repository builder
     let mut repo_builder = RepoBuilder::new();
     repo_builder.fetch_options(fetch_options);
@@ -68,20 +113,25 @@ fn clone_new_repo(url: &str, local_path: &Path, fetch_options: FetchOptions) -> 
 
 /// Pull (merge) changes into the current branch
 fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions) -> Result<(), GitError> {
-    // Get the current branch
-    let head = repo.head()?;
-    let branch_name = head.name().unwrap_or("master");
+    println!("Pulling changes into the current branch");
+
+    // Get the current local branch
+    // let head = repo.head()?;
+    // let branch_name = head.name().unwrap_or("master");
 
     // Find remote branch
-    let remote_branch_name = format!("origin/{}", branch_name);
+    let remote_branch_name = format!("remotes/origin/master");
+
+    println!("Merging changes from remote branch: {}", &remote_branch_name);
 
     // Annotated commit for merge
-    let remote_branch = repo.find_branch(&remote_branch_name, git2::BranchType::Remote)?;
-    let remote_commit = remote_branch.get().peel_to_commit()?;
-    let remote_annotated_commit = repo.reference_to_annotated_commit(&remote_branch.get())?;
+    let fetch_head = repo.find_reference("FETCH_HEAD")?;
+    let fetch_commit = repo.reference_to_annotated_commit(&fetch_head)?;
 
     // Perform merge analysis
-    let (merge_analysis, _) = repo.merge_analysis(&[&remote_annotated_commit])?;
+    let (merge_analysis, _) = repo.merge_analysis(&[&fetch_commit])?;
+
+    println!("Merge analysis result: {:?}", merge_analysis);
 
     match merge_analysis {
         // Repository is up to date
@@ -90,12 +140,11 @@ fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions) -> Result<(), Git
         // Fast-forward merge possible
         git2::MergeAnalysis::ANALYSIS_FASTFORWARD => {
             // Update HEAD to point to the remote commit
-            let mut reference = repo.find_reference("HEAD")?;
-            reference.set_target(remote_annotated_commit.id(), "Fast-forward merge")?;
-            let remote_object = remote_commit.as_object();
-
-            // Checkout the new commit
-            repo.checkout_tree(&remote_object, None)?;
+            let refname = format!("refs/heads/master");
+            let mut reference = repo.find_reference(&refname)?;
+            reference.set_target(fetch_commit.id(), "Fast-Forward")?;
+            repo.set_head(&refname)?;
+            let _ = repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()));
 
             Ok(())
         }
@@ -103,14 +152,8 @@ fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions) -> Result<(), Git
         // Merge required
         git2::MergeAnalysis::ANALYSIS_NORMAL => {
             // Perform merge with default options
-            let mut merge_options = git2::MergeOptions::new();
-            let mut checkout_options = CheckoutBuilder::new();
-
-            repo.merge(
-                &[&remote_annotated_commit],
-                Some(&mut merge_options),
-                Some(&mut checkout_options),
-            )?;
+            let head_commit = repo.reference_to_annotated_commit(&repo.head()?)?;
+            normal_merge(&repo, &head_commit, &fetch_commit)?;
 
             Ok(())
         }
@@ -121,6 +164,8 @@ fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions) -> Result<(), Git
 }
 
 pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result<(), GitError> {
+    println!("Staging and pushing changes");
+    
     // Stage all changes (equivalent to git add .)
     let mut index = repo.index()?;
     index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
@@ -153,9 +198,9 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
     callbacks.credentials(|_url, username_from_url, _allowed_types| {
         // Dynamically find SSH key path
         let ssh_key_path = format!(
-            // "{}/.ssh/id_rsa_demo",
-            "/app/id_rsa_demo",
-            // env::var("HOME").expect("HOME environment variable not set")
+            "{}/.ssh/id_rsa_demo",
+            // "/app/id_rsa_demo",
+            env::var("HOME").expect("HOME environment variable not set")
         );
 
         Cred::ssh_key(
@@ -166,6 +211,27 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
         )
     });
 
+    // Print out our transfer progress.
+    callbacks.transfer_progress(|stats| {
+        if stats.received_objects() == stats.total_objects() {
+            print!(
+                "Resolving deltas {}/{}\r",
+                stats.indexed_deltas(),
+                stats.total_deltas()
+            );
+        } else if stats.total_objects() > 0 {
+            print!(
+                "Received {}/{} objects ({}) in {} bytes\r",
+                stats.received_objects(),
+                stats.total_objects(),
+                stats.indexed_objects(),
+                stats.received_bytes()
+            );
+        }
+        io::stdout().flush().unwrap();
+        true
+    });
+
     // Prepare push options
     let mut push_options = git2::PushOptions::new();
     push_options.remote_callbacks(callbacks);
@@ -173,9 +239,13 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
     // Find the origin remote
     let mut remote = repo.find_remote("origin")?;
 
+    println!("Pushing to remote: {}", remote.url().unwrap());
+
     // Determine the current branch name
     let branch_name = repo.head()?;
     let refspec = format!("refs/heads/{}", branch_name.shorthand().unwrap_or("master"));
+
+    println!("Pushing to remote branch: {}", &refspec);
 
     // Push changes
     remote.push(&[&refspec], Some(&mut push_options))?;
