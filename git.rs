@@ -198,9 +198,9 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
     callbacks.credentials(|_url, username_from_url, _allowed_types| {
         // Dynamically find SSH key path
         let ssh_key_path = format!(
-            "{}/.ssh/id_rsa_demo",
-            // "/app/id_rsa_demo",
-            env::var("HOME").expect("HOME environment variable not set")
+            "/app/id_rsa_demo",
+            // "{}/.ssh/id_rsa_demo",
+            // env::var("HOME").expect("HOME environment variable not set")
         );
 
         Cred::ssh_key(

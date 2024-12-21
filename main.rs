@@ -16,8 +16,6 @@ use git::clone_repo;
 #[derive(serde::Serialize, Clone)]
 struct Config {
     enabled: bool,
-    secret_name: String,
-    secret_namespace: String,
     namespace: String,
     app_repository: String,
     manifest_repository: String,
@@ -50,8 +48,6 @@ fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
     };
 
     let enabled = annotations.get("gitops.operator.enabled")?.trim().parse().unwrap();
-    let secret_name = annotations.get("gitops.operator.secret_name")?.to_string();
-    let secret_namespace = annotations.get("gitops.operator.secret_namespace")?.to_string();
     let app_repository = annotations.get("gitops.operator.app_repository")?.to_string();
     let manifest_repository = annotations.get("gitops.operator.manifest_repository")?.to_string();
     let image_name = annotations.get("gitops.operator.image_name")?.to_string();
@@ -67,8 +63,6 @@ fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
         version,
         config: Config {
             enabled,
-            secret_name,
-            secret_namespace,
             namespace: namespace.clone(),
             app_repository,
             manifest_repository,
@@ -95,6 +89,7 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
         clone_repo(&entry.config.app_repository, &app_local_path);
         clone_repo(&entry.config.manifest_repository, &manifest_local_path);
         let _ = patch_deployment_and_commit(
+            format!("/tmp/app-{}", &entry.name).as_ref(),
             format!("/tmp/manifest-{}", &entry.name).as_ref(),
             &entry.config.deployment_path,
             &entry.config.image_name,
