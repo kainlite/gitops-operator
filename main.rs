@@ -101,6 +101,8 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    println!("Starting gitops-operator");
+
     tracing_subscriber::fmt::init();
     let client = Client::try_default().await?;
     let api: Api<Deployment> = Api::all(client);
