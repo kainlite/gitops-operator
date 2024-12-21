@@ -25,14 +25,10 @@ fn normal_merge(
     let local_commit = repo.find_commit(local.id())?;
     let remote_commit = repo.find_commit(remote.id())?;
     // Do our merge commit and set current branch head to that commit.
-    let _merge_commit = repo.commit(
-        Some("HEAD"),
-        &sig,
-        &sig,
-        &msg,
-        &result_tree,
-        &[&local_commit, &remote_commit],
-    )?;
+    let _merge_commit = repo.commit(Some("HEAD"), &sig, &sig, &msg, &result_tree, &[
+        &local_commit,
+        &remote_commit,
+    ])?;
     // Set working tree to match head.
     repo.checkout_head(None)?;
     Ok(())
@@ -165,7 +161,7 @@ fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions) -> Result<(), Git
 
 pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result<(), GitError> {
     println!("Staging and pushing changes");
-    
+
     // Stage all changes (equivalent to git add .)
     let mut index = repo.index()?;
     index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
