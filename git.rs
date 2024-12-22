@@ -182,6 +182,8 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
     // Prepare signature (author and committer)
     let signature = repo.signature()?;
 
+    println!("Author: {}", signature.name().unwrap());
+
     // Create the commit
     let commit_oid = repo.commit(
         Some("HEAD"),      // Update HEAD reference
