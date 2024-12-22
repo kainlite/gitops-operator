@@ -211,6 +211,9 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
             env::var("HOME").expect("HOME environment variable not set")
         );
 
+        println!("Using SSH key: {}", &ssh_key_path);
+        println!("{}", Path::new(&ssh_key_path).exists());
+
         Cred::ssh_key(
             username_from_url.unwrap_or("git"),
             None,
@@ -218,7 +221,7 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
             None,
         )
     });
-    
+
     // TODO: implement certificate check, potentially insecure
     callbacks.certificate_check(|_cert, _host| {
         // Return true to indicate we accept the host
