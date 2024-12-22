@@ -1,5 +1,4 @@
 use git2::{build::RepoBuilder, Cred, Error as GitError, FetchOptions, RemoteCallbacks, Repository};
-use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 

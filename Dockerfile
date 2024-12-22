@@ -9,7 +9,7 @@ RUN --mount=type=cache,target=/volume/target \
     mv /volume/target/x86_64-unknown-linux-musl/release/gitops-operator .
 
 # FROM cgr.dev/chainguard/static
-FROM busybox
+FROM ubuntu
 
 COPY --from=builder --chown=nonroot:nonroot /volume/gitops-operator /app/
 

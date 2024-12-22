@@ -51,7 +51,10 @@ pub fn patch_deployment_and_commit(
     let commit_message = "chore(refs): gitops-operator updating image tags";
     let app_repo = Repository::open(&app_repo_path)?;
     let manifest_repo = Repository::open(&manifest_repo_path)?;
-    let new_sha = app_repo.head()?.target().unwrap().to_string();
+
+    // Find the latest remote head
+    // let new_sha = app_repo.head()?.target().unwrap().to_string();
+    let new_sha = app_repo.head()?.peel_to_commit().unwrap().parent(1)?.id().to_string();
 
     // Perform changes
     let _ = patch_image_tag(
