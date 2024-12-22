@@ -13,6 +13,6 @@ FROM cgr.dev/chainguard/static
 COPY --from=builder --chown=nonroot:nonroot /volume/gitops-operator /app/
 COPY files/known_hosts /home/nonroot/.ssh/known_hosts
 
-EXPOSE 8080
+EXPOSE 8000
 
 ENTRYPOINT ["/app/gitops-operator"]
