@@ -127,10 +127,6 @@ fn clone_new_repo(url: &str, local_path: &Path, fetch_options: FetchOptions) -> 
 fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions) -> Result<(), GitError> {
     println!("Pulling changes into the current branch");
 
-    // Get the current local branch
-    // let head = repo.head()?;
-    // let branch_name = head.name().unwrap_or("master");
-
     // Find remote branch
     let remote_branch_name = format!("remotes/origin/master");
 
@@ -145,33 +141,24 @@ fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions) -> Result<(), Git
 
     println!("Merge analysis result: {:?}", merge_analysis);
 
-    match merge_analysis {
-        // Repository is up to date
-        git2::MergeAnalysis::ANALYSIS_UP_TO_DATE => Ok(()),
+    if merge_analysis.is_fast_forward() {
+        let refname = format!("refs/heads/master");
+        let mut reference = repo.find_reference(&refname)?;
+        reference.set_target(fetch_commit.id(), "Fast-Forward")?;
+        repo.set_head(&refname)?;
+        let _ = repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()));
 
-        // Fast-forward merge possible
-        git2::MergeAnalysis::ANALYSIS_FASTFORWARD => {
-            // Update HEAD to point to the remote commit
-            let refname = format!("refs/heads/master");
-            let mut reference = repo.find_reference(&refname)?;
-            reference.set_target(fetch_commit.id(), "Fast-Forward")?;
-            repo.set_head(&refname)?;
-            let _ = repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()));
+        Ok(())
+    } else if merge_analysis.is_normal() {
+        let head_commit = repo.reference_to_annotated_commit(&repo.head()?)?;
+        normal_merge(&repo, &head_commit, &fetch_commit)?;
 
-            Ok(())
-        }
-
-        // Merge required
-        git2::MergeAnalysis::ANALYSIS_NORMAL => {
-            // Perform merge with default options
-            let head_commit = repo.reference_to_annotated_commit(&repo.head()?)?;
-            normal_merge(&repo, &head_commit, &fetch_commit)?;
-
-            Ok(())
-        }
-
-        // Unhandled merge scenario
-        _ => Err(GitError::from_str("Unhandled merge analysis scenario")),
+        Ok(())
+    } else if merge_analysis.is_up_to_date() {
+        println!("Repository is up to date");
+        Ok(())
+    } else {
+        Err(GitError::from_str("Unsupported merge analysis case"))
     }
 }
 
