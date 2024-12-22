@@ -53,7 +53,6 @@ pub fn patch_deployment_and_commit(
     let manifest_repo = Repository::open(&manifest_repo_path)?;
 
     // Find the latest remote head
-    // let new_sha = app_repo.head()?.target().unwrap().to_string();
     let new_sha = app_repo.head()?.peel_to_commit().unwrap().parent(1)?.id().to_string();
 
     // Perform changes
