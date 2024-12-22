@@ -53,6 +53,9 @@ pub fn clone_or_update_repo(url: &str, repo_path: PathBuf) -> Result<(), GitErro
             env::var("HOME").expect("HOME environment variable not set")
         );
 
+        println!("Using SSH key: {}", &ssh_key_path);
+        println!("{}", Path::new(&ssh_key_path).exists());
+
         Cred::ssh_key(
             username_from_url.unwrap_or("git"),
             None,
