@@ -177,6 +177,8 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
     // Get the current head commit
     let parent_commit = repo.head()?.peel_to_commit()?;
 
+    println!("Parent commit: {}", parent_commit.id());
+
     // Prepare signature (author and committer)
     let signature = repo.signature()?;
 
