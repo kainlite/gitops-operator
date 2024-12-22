@@ -77,7 +77,9 @@ pub fn patch_deployment_and_commit(
         Ok(_) => println!("Image tag updated successfully"),
         Err(e) => {
             println!("We don't need to update image tag: {:?}", e);
-            return Err(GitError::from_str("Aborting update image tag, already updated..."));
+            return Err(GitError::from_str(
+                "Aborting update image tag, already updated...",
+            ));
         }
     }
 
