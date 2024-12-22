@@ -67,13 +67,19 @@ pub fn patch_deployment_and_commit(
     println!("New application SHA: {}", new_sha);
 
     // Perform changes
-    let _ = patch_image_tag(
+    let patch = patch_image_tag(
         format!("{}/{}", manifest_repo_path, file_name),
         image_name.to_string(),
         new_sha,
     );
 
-    println!("Changes applied successfully");
+    match patch {
+        Ok(_) => println!("Image tag updated successfully"),
+        Err(e) => {
+            println!("We don't need to update image tag: {:?}", e);
+            return Err(GitError::from_str("Aborting update image tag, already updated..."));
+        }
+    }
 
     // Stage and push changes
     let _ = stage_and_push_changes(&manifest_repo, commit_message)?;
