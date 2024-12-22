@@ -1,4 +1,7 @@
-use git2::{build::RepoBuilder, Cred, Error as GitError, FetchOptions, RemoteCallbacks, Repository};
+use git2::{
+    build::RepoBuilder, CertificateCheckStatus, Cred, Error as GitError, FetchOptions, RemoteCallbacks,
+    Repository,
+};
 use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -56,6 +59,12 @@ pub fn clone_or_update_repo(url: &str, repo_path: PathBuf) -> Result<(), GitErro
             Path::new(&ssh_key_path),
             None,
         )
+    });
+
+    // TODO: implement certificate check, potentially insecure
+    callbacks.certificate_check(|_cert, _host| {
+        // Return true to indicate we accept the host
+        Ok(CertificateCheckStatus::CertificateOk)
     });
 
     // Prepare fetch options
@@ -208,6 +217,12 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
             Path::new(&ssh_key_path),
             None,
         )
+    });
+    
+    // TODO: implement certificate check, potentially insecure
+    callbacks.certificate_check(|_cert, _host| {
+        // Return true to indicate we accept the host
+        Ok(CertificateCheckStatus::CertificateOk)
     });
 
     // Print out our transfer progress.
