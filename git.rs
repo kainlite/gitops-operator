@@ -142,7 +142,7 @@ fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions) -> Result<(), Git
     println!("Merge analysis result: {:?}", merge_analysis);
 
     if merge_analysis.is_fast_forward() {
-        let refname = format!("refs/heads/master");
+        let refname = format!("refs/remotes/origin/master");
         let mut reference = repo.find_reference(&refname)?;
         reference.set_target(fetch_commit.id(), "Fast-Forward")?;
         repo.set_head(&refname)?;

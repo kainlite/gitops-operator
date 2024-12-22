@@ -53,7 +53,14 @@ pub fn patch_deployment_and_commit(
     let manifest_repo = Repository::open(&manifest_repo_path)?;
 
     // Find the latest remote head
-    let new_sha = app_repo.head()?.peel_to_commit().unwrap().parent(1)?.id().to_string();
+    // While this worked, it failed in some scenarios that were unimplemented
+    // let new_sha = app_repo.head()?.peel_to_commit().unwrap().parent(1)?.id().to_string();
+
+    let fetch_head = app_repo.find_reference("FETCH_HEAD")?;
+    let remote = app_repo.reference_to_annotated_commit(&fetch_head)?;
+    let remote_commit = app_repo.find_commit(remote.id())?;
+
+    let new_sha = remote_commit.id().to_string();
 
     println!("New application SHA: {}", new_sha);
 
