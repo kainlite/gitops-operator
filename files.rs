@@ -55,6 +55,8 @@ pub fn patch_deployment_and_commit(
     // Find the latest remote head
     let new_sha = app_repo.head()?.peel_to_commit().unwrap().parent(1)?.id().to_string();
 
+    println!("New application SHA: {}", new_sha);
+
     // Perform changes
     let _ = patch_image_tag(
         format!("{}/{}", manifest_repo_path, file_name),
