@@ -6,6 +6,20 @@ use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use git2::Signature;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn create_signature<'a>() -> Result<Signature<'a>, GitError> {
+    let name = "GitOps Operator";
+    let email = "gitops-operator+kainlite@gmail.com";
+
+    // Get current timestamp
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+    // Create signature with current timestamp
+    Signature::new(name, email, &git2::Time::new(time as i64, 0))
+}
+
 fn normal_merge(
     repo: &Repository,
     local: &git2::AnnotatedCommit,
@@ -180,7 +194,8 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
     println!("Parent commit: {}", parent_commit.id());
 
     // Prepare signature (author and committer)
-    let signature = repo.signature()?;
+    // let signature = repo.signature()?;
+    let signature = create_signature()?;
 
     println!("Author: {}", signature.name().unwrap());
 
