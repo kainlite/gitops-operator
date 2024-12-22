@@ -91,7 +91,7 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt,clippy
-      - run: cargo +nightly fmt -- --check
+      - run: cargo fmt -- --check
 
       - uses: giraffate/clippy-action@v1
         with:
