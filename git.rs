@@ -25,10 +25,14 @@ fn normal_merge(
     let local_commit = repo.find_commit(local.id())?;
     let remote_commit = repo.find_commit(remote.id())?;
     // Do our merge commit and set current branch head to that commit.
-    let _merge_commit = repo.commit(Some("HEAD"), &sig, &sig, &msg, &result_tree, &[
-        &local_commit,
-        &remote_commit,
-    ])?;
+    let _merge_commit = repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        &msg,
+        &result_tree,
+        &[&local_commit, &remote_commit],
+    )?;
     // Set working tree to match head.
     repo.checkout_head(None)?;
     Ok(())
@@ -42,7 +46,7 @@ pub fn clone_or_update_repo(url: &str, repo_path: PathBuf) -> Result<(), GitErro
     callbacks.credentials(|_url, username_from_url, _allowed_types| {
         // Dynamically find SSH key path
         let ssh_key_path = format!(
-            "/app/id_rsa_demo",
+            "./id_rsa_demo",
             // "{}/.ssh/id_rsa_demo",
             // env::var("HOME").expect("HOME environment variable not set")
         );
@@ -195,7 +199,7 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
     callbacks.credentials(|_url, username_from_url, _allowed_types| {
         // Dynamically find SSH key path
         let ssh_key_path = format!(
-            "/app/id_rsa_demo",
+            "./id_rsa_demo",
             // "{}/.ssh/id_rsa_demo",
             // env::var("HOME").expect("HOME environment variable not set")
         );
