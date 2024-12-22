@@ -64,6 +64,8 @@ pub fn patch_deployment_and_commit(
         new_sha,
     );
 
+    println!("Changes applied successfully");
+
     // Stage and push changes
     let _ = stage_and_push_changes(&manifest_repo, commit_message)?;
 
