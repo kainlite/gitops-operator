@@ -194,7 +194,7 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
         &[&parent_commit], // Parent commit
     )?;
 
-    println!("{}", commit_oid);
+    println!("New commit: {}", commit_oid);
 
     // Prepare push credentials
     let mut callbacks = RemoteCallbacks::new();
