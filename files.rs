@@ -21,9 +21,11 @@ fn patch_image_tag(file_path: String, image_name: String, new_sha: String) -> Re
     if let Some(spec) = deployment.spec.as_mut() {
         if let Some(template) = spec.template.spec.as_mut() {
             for container in &mut template.containers {
-                if container.image.as_ref().unwrap().contains(&image_name)
-                    | container.image.as_ref().unwrap().contains(&new_sha)
-                {
+                if container.image.as_ref().unwrap().contains(&new_sha) {
+                    println!("Image tag already updated... Aborting mission!");
+                    return Err(anyhow::anyhow!("Image tag {} is already up to date", new_sha));
+                }
+                if container.image.as_ref().unwrap().contains(&image_name) {
                     container.image = Some(format!("{}:{}", &image_name, &new_sha));
                 }
             }
