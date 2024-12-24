@@ -15,6 +15,9 @@ You can [read](https://redbeard.team/en/blog/create-your-own-gitops-controller-w
 Run against your current Kubernetes context:
 
 ```sh
+kind create cluster
+## Apply the manifests from the gitops-operator-manifests 
+# kustomize build . | kubectl apply -f -
 cargo watch
 ```
 
