@@ -2,10 +2,15 @@ use crate::git::stage_and_push_changes;
 use anyhow::Context;
 use anyhow::Error;
 use git2::Error as GitError;
-use git2::Repository;
+use git2::{FetchOptions, RemoteCallbacks, Repository};
 use k8s_openapi::api::apps::v1::Deployment;
 use serde_yaml;
 use std::fs;
+use std::path::Path;
+
+use std::env;
+
+use git2::Cred;
 
 fn patch_image_tag(file_path: String, image_name: String, new_sha: String) -> Result<(), Error> {
     println!("Patching image tag in deployment file: {}", file_path);
@@ -32,7 +37,6 @@ fn patch_image_tag(file_path: String, image_name: String, new_sha: String) -> Re
         }
     }
 
-    // Optional: Write modified deployment back to YAML file
     let updated_yaml =
         serde_yaml::to_string(&deployment).context("Failed to serialize updated deployment")?;
 
@@ -51,19 +55,11 @@ pub fn patch_deployment_and_commit(
 ) -> Result<(), GitError> {
     println!("Patching deployment and committing changes");
     let commit_message = "chore(refs): gitops-operator updating image tags";
-    let app_repo = Repository::open(&app_repo_path)?;
+    let _app_repo = Repository::open(&app_repo_path)?;
     let manifest_repo = Repository::open(&manifest_repo_path)?;
 
     // Find the latest remote head
-    // While this worked, it failed in some scenarios that were unimplemented
-    // let new_sha = app_repo.head()?.peel_to_commit().unwrap().parent(1)?.id().to_string();
-
-    let fetch_head = app_repo.find_reference("FETCH_HEAD")?;
-    let remote = app_repo.reference_to_annotated_commit(&fetch_head)?;
-    let remote_commit = app_repo.find_commit(remote.id())?;
-
-    let new_sha = remote_commit.id().to_string();
-
+    let new_sha = get_latest_master_commit(Path::new(&app_repo_path))?.to_string();
     println!("New application SHA: {}", new_sha);
 
     // Perform changes
@@ -87,4 +83,94 @@ pub fn patch_deployment_and_commit(
     let _ = stage_and_push_changes(&manifest_repo, commit_message)?;
 
     Ok(())
+}
+
+fn get_latest_master_commit(repo_path: &Path) -> Result<git2::Oid, git2::Error> {
+    // Open the repository
+    let repo = Repository::open(repo_path)?;
+
+    // Debug: List all branches to verify what's available
+    println!("Available branches:");
+    for branch in repo.branches(None)? {
+        let (branch, branch_type) = branch?;
+        println!(
+            "  {} ({:?})",
+            branch.name()?.unwrap_or("invalid utf-8"),
+            branch_type
+        );
+    }
+
+    // Debug: List all remotes
+    println!("\nAvailable remotes:");
+    for remote_name in repo.remotes()?.iter() {
+        println!("  {}", remote_name.unwrap_or("invalid utf-8"));
+    }
+
+    // Create fetch options with verbose progress
+    let mut fetch_opts = FetchOptions::new();
+    let mut callbacks = RemoteCallbacks::new();
+
+    // Add progress callback for debugging
+    callbacks.transfer_progress(|stats| {
+        println!(
+            "Fetch progress: {}/{} objects",
+            stats.received_objects(),
+            stats.total_objects()
+        );
+        true
+    });
+
+    callbacks.credentials(|_url, username_from_url, _allowed_types| {
+        // Dynamically find SSH key path
+        let ssh_key_path = format!(
+            "{}/.ssh/id_rsa_demo",
+            env::var("HOME").expect("HOME environment variable not set")
+        );
+
+        Cred::ssh_key(
+            username_from_url.unwrap_or("git"),
+            None,
+            Path::new(&ssh_key_path),
+            None,
+        )
+    });
+
+    fetch_opts.remote_callbacks(callbacks);
+
+    // Get the remote, with explicit error handling
+    let mut remote = repo.find_remote("origin").map_err(|e| {
+        println!("Error finding remote 'origin': {}", e);
+        e
+    })?;
+
+    // Fetch the latest changes, including all branches
+    println!("\nFetching updates...");
+    remote
+        .fetch(&["refs/remotes/origin/master"], Some(&mut fetch_opts), None)
+        .map_err(|e| {
+            println!("Error during fetch: {}", e);
+            e
+        })?;
+
+    // Try different branch name variations
+    let branch_names = ["refs/remotes/origin/master", "origin/master"];
+
+    for &branch_name in &branch_names {
+        println!("\nTrying to find branch: {}", branch_name);
+
+        // Try to find the branch reference directly
+        match repo.find_reference(branch_name) {
+            Ok(reference) => {
+                let commit = reference.peel_to_commit()?;
+                println!("Found commit: {} in branch {}", commit.id(), branch_name);
+                return Ok(commit.id());
+            }
+            Err(e) => println!("Could not find reference {}: {}", branch_name, e),
+        }
+    }
+
+    // If we get here, we couldn't find the branch
+    Err(git2::Error::from_str(
+        "Could not find master branch in any expected location",
+    ))
 }
