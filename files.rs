@@ -20,10 +20,13 @@ pub fn needs_patching(file_path: &str, new_sha: String) -> Result<bool, Error> {
     let deployment: Deployment =
         serde_yaml::from_str(&yaml_content).context("Failed to parse YAML into Kubernetes Deployment")?;
 
+    println!("{:?}", deployment);
+
     // Modify deployment specifics
     if let Some(spec) = deployment.spec {
         if let Some(template) = spec.template.spec {
             for container in &template.containers {
+                println!("{:?}", container.image);
                 if container.image.as_ref().unwrap().contains(&new_sha) {
                     info!("Image tag already updated... Aborting mission!");
                     return Ok(false);
@@ -170,15 +173,12 @@ spec:
     fn test_needs_patching_true() {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("deployment.yaml");
-        
+
         // Create deployment with old SHA
         let yaml_content = create_test_deployment("test-image:old-sha");
         fs::write(&file_path, yaml_content).unwrap();
 
-        let result = needs_patching(
-            file_path.to_str().unwrap(),
-            "new-sha".to_string(),
-        ).unwrap();
+        let result = needs_patching(file_path.to_str().unwrap(), "new-sha".to_string()).unwrap();
 
         assert!(result, "Should need patching when SHA is different");
     }
@@ -187,15 +187,12 @@ spec:
     fn test_needs_patching_false() {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("deployment.yaml");
-        
+
         // Create deployment with new SHA
         let yaml_content = create_test_deployment("test-image:new-sha");
         fs::write(&file_path, yaml_content).unwrap();
 
-        let result = needs_patching(
-            file_path.to_str().unwrap(),
-            "new-sha".to_string(),
-        ).unwrap();
+        let result = needs_patching(file_path.to_str().unwrap(), "new-sha".to_string()).unwrap();
 
         assert!(!result, "Should not need patching when SHA is the same");
     }
@@ -204,38 +201,33 @@ spec:
     fn test_patch_deployment_success() {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("deployment.yaml");
-        
+
         // Create deployment with old SHA
         let yaml_content = create_test_deployment("test-image:old-sha");
         fs::write(&file_path, yaml_content).unwrap();
 
-        let result = patch_deployment(
-            file_path.to_str().unwrap(),
-            "test-image",
-            "new-sha",
-        );
+        let result = patch_deployment(file_path.to_str().unwrap(), "test-image", "new-sha");
 
         assert!(result.is_ok(), "Patch should succeed");
 
         // Verify the file was updated correctly
         let updated_content = fs::read_to_string(&file_path).unwrap();
-        assert!(updated_content.contains("test-image:new-sha"), "Image should be updated with new SHA");
+        assert!(
+            updated_content.contains("test-image:new-sha"),
+            "Image should be updated with new SHA"
+        );
     }
 
     #[test]
     fn test_patch_deployment_already_updated() {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("deployment.yaml");
-        
+
         // Create deployment with new SHA
         let yaml_content = create_test_deployment("test-image:new-sha");
         fs::write(&file_path, yaml_content).unwrap();
 
-        let result = patch_deployment(
-            file_path.to_str().unwrap(),
-            "test-image",
-            "new-sha",
-        );
+        let result = patch_deployment(file_path.to_str().unwrap(), "test-image", "new-sha");
 
         assert!(result.is_err(), "Patch should fail when image is already updated");
     }
@@ -244,26 +236,18 @@ spec:
     fn test_patch_deployment_invalid_yaml() {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("deployment.yaml");
-        
+
         // Create invalid YAML
         fs::write(&file_path, "invalid: - yaml: content").unwrap();
 
-        let result = patch_deployment(
-            file_path.to_str().unwrap(),
-            "test-image",
-            "new-sha",
-        );
+        let result = patch_deployment(file_path.to_str().unwrap(), "test-image", "new-sha");
 
         assert!(result.is_err(), "Patch should fail with invalid YAML");
     }
 
     #[test]
     fn test_patch_deployment_missing_file() {
-        let result = patch_deployment(
-            "nonexistent/path/deployment.yaml",
-            "test-image",
-            "new-sha",
-        );
+        let result = patch_deployment("nonexistent/path/deployment.yaml", "test-image", "new-sha");
 
         assert!(result.is_err(), "Patch should fail with missing file");
     }

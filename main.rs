@@ -110,9 +110,11 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
             }
         };
 
-        if needs_patching(&manifest_repo_path, new_sha.to_string()).unwrap_or(false) {
+        let deployment_path = format!("{}/{}", &manifest_repo_path, &entry.config.deployment_path);
+
+        if needs_patching(&deployment_path, new_sha.to_string()).unwrap_or(false) {
             match patch_deployment(
-                &entry.config.deployment_path,
+                &deployment_path,
                 &entry.config.image_name,
                 &new_sha.to_string(),
             ) {
