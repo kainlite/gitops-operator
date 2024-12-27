@@ -1,6 +1,6 @@
 [package]
 name = "gitops-operator"
-version = "1.16.3"
+version = "0.2.0"
 authors = ["Gabriel Garrido <kainlite@gmail.com>"]
 edition = "2021"
 license = "Apache-2.0"
@@ -15,7 +15,7 @@ path = "main.rs"
 axum = "0.7.9"
 tower-http = { version = "0.6.2", default-features = false, features = ["trace"] }
 futures = "0.3.31"
-tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "full"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["json"] }
 anyhow = "1.0.95"
@@ -27,6 +27,13 @@ serde_yaml = "0.9.34"
 [dependencies.kube]
 version = "0.98.0"
 features = ["runtime"]
+
+[dev-dependencies]
+tokio-test = "0.4.3"
+mockall = "0.12.1"
+assert_matches = "1.5.0"
+tempfile = "3.8.1"
+tower = { version = "0.4", features = ["util"] }
 
 # local testing: ignore
 #git = "https://github.com/kube-rs/kube.git"

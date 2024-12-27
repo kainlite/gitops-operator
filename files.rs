@@ -1,4 +1,5 @@
 use crate::git::stage_and_push_changes;
+use crate::git::DefaultCallbacks;
 use anyhow::Context;
 use anyhow::Error;
 use git2::Error as GitError;
@@ -8,12 +9,11 @@ use serde_yaml;
 use std::fs;
 use std::path::Path;
 
-use std::env;
-
-use git2::Cred;
+use tracing::{debug, error, info, warn};
 
 pub fn needs_patching(file_path: &str, new_sha: String) -> Result<bool, Error> {
-    println!("Comparing deployment file: {}", file_path);
+    info!("Comparing deployment file: {}", file_path);
+
     let yaml_content = fs::read_to_string(&file_path).context("Failed to read deployment YAML file")?;
 
     // Parse the YAML into a Deployment resource
@@ -25,7 +25,7 @@ pub fn needs_patching(file_path: &str, new_sha: String) -> Result<bool, Error> {
         if let Some(template) = spec.template.spec {
             for container in &template.containers {
                 if container.image.as_ref().unwrap().contains(&new_sha) {
-                    println!("Image tag already updated... Aborting mission!");
+                    info!("Image tag already updated... Aborting mission!");
                     return Ok(false);
                 }
             }
@@ -36,7 +36,7 @@ pub fn needs_patching(file_path: &str, new_sha: String) -> Result<bool, Error> {
 }
 
 pub fn patch_deployment(file_path: &str, image_name: &str, new_sha: &str) -> Result<(), Error> {
-    println!("Patching image tag in deployment file: {}", file_path);
+    info!("Patching image tag in deployment file: {}", file_path);
     let yaml_content = fs::read_to_string(&file_path).context("Failed to read deployment YAML file")?;
 
     // Parse the YAML into a Deployment resource
@@ -48,7 +48,7 @@ pub fn patch_deployment(file_path: &str, image_name: &str, new_sha: &str) -> Res
         if let Some(template) = spec.template.spec.as_mut() {
             for container in &mut template.containers {
                 if container.image.as_ref().unwrap().contains(&new_sha) {
-                    println!("Image tag already updated... Aborting mission!");
+                    warn!("Image tag already updated... Aborting mission!");
                     return Err(anyhow::anyhow!("Image tag {} is already up to date", new_sha));
                 }
                 if container.image.as_ref().unwrap().contains(&image_name) {
@@ -73,69 +73,43 @@ pub fn commit_changes(manifest_repo_path: &str) -> Result<(), GitError> {
 }
 
 pub fn get_latest_master_commit(repo_path: &Path) -> Result<git2::Oid, git2::Error> {
-    // Open the repository
     let repo = Repository::open(repo_path)?;
 
-    // Debug: List all branches to verify what's available
-    println!("Available branches:");
+    debug!("Available branches:");
     for branch in repo.branches(None)? {
         let (branch, branch_type) = branch?;
-        println!(
-            "  {} ({:?})",
+        debug!(
+            "{} ({:?})",
             branch.name()?.unwrap_or("invalid utf-8"),
             branch_type
         );
     }
 
-    // Debug: List all remotes
-    println!("\nAvailable remotes:");
+    debug!("Available remotes:");
     for remote_name in repo.remotes()?.iter() {
-        println!("  {}", remote_name.unwrap_or("invalid utf-8"));
+        debug!("{}", remote_name.unwrap_or("invalid utf-8"));
     }
 
     // Create fetch options with verbose progress
     let mut fetch_opts = FetchOptions::new();
+
     let mut callbacks = RemoteCallbacks::new();
-
-    // Add progress callback for debugging
-    callbacks.transfer_progress(|stats| {
-        println!(
-            "Fetch progress: {}/{} objects",
-            stats.received_objects(),
-            stats.total_objects()
-        );
-        true
-    });
-
-    callbacks.credentials(|_url, username_from_url, _allowed_types| {
-        // Dynamically find SSH key path
-        let ssh_key_path = format!(
-            "{}/.ssh/id_rsa_demo",
-            env::var("HOME").expect("HOME environment variable not set")
-        );
-
-        Cred::ssh_key(
-            username_from_url.unwrap_or("git"),
-            None,
-            Path::new(&ssh_key_path),
-            None,
-        )
-    });
+    callbacks.prepare_callbacks();
 
     fetch_opts.remote_callbacks(callbacks);
 
     // Get the remote, with explicit error handling
     let mut remote = repo.find_remote("origin").map_err(|e| {
-        println!("Error finding remote 'origin': {}", e);
+        error!("Error finding remote 'origin': {}", e);
         e
     })?;
 
     // Fetch the latest changes, including all branches
-    println!("\nFetching updates...");
+    info!("Fetching updates...");
     remote
         .fetch(&["refs/remotes/origin/master"], Some(&mut fetch_opts), None)
         .map_err(|e| {
-            println!("Error during fetch: {}", e);
+            error!("Error during fetch: {}", e);
             e
         })?;
 
@@ -143,16 +117,16 @@ pub fn get_latest_master_commit(repo_path: &Path) -> Result<git2::Oid, git2::Err
     let branch_names = ["refs/remotes/origin/master"];
 
     for &branch_name in &branch_names {
-        println!("\nTrying to find branch: {}", branch_name);
+        info!("Trying to find branch: {}", branch_name);
 
         // Try to find the branch reference directly
         match repo.find_reference(branch_name) {
             Ok(reference) => {
                 let commit = reference.peel_to_commit()?;
-                println!("Found commit: {} in branch {}", commit.id(), branch_name);
+                info!("Found commit: {} in branch {}", commit.id(), branch_name);
                 return Ok(commit.id());
             }
-            Err(e) => println!("Could not find reference {}: {}", branch_name, e),
+            Err(e) => error!("Could not find reference {}: {}", branch_name, e),
         }
     }
 
@@ -160,4 +134,137 @@ pub fn get_latest_master_commit(repo_path: &Path) -> Result<git2::Oid, git2::Err
     Err(git2::Error::from_str(
         "Could not find master branch in any expected location",
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn create_test_deployment(image: &str) -> String {
+        format!(
+            r#"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-app
+  namespace: default
+  annotations:
+    gitops.operator.enabled: "true"
+    gitops.operator.app_repository: "https://github.com/org/app"
+    gitops.operator.manifest_repository: "https://github.com/org/manifests"
+    gitops.operator.image_name: "test-image"
+    gitops.operator.deployment_path: "deployments/app.yaml"
+spec:
+  template:
+    spec:
+      containers:
+      - name: test-container
+        image: {}"#,
+            image
+        )
+    }
+
+    #[test]
+    fn test_needs_patching_true() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("deployment.yaml");
+        
+        // Create deployment with old SHA
+        let yaml_content = create_test_deployment("test-image:old-sha");
+        fs::write(&file_path, yaml_content).unwrap();
+
+        let result = needs_patching(
+            file_path.to_str().unwrap(),
+            "new-sha".to_string(),
+        ).unwrap();
+
+        assert!(result, "Should need patching when SHA is different");
+    }
+
+    #[test]
+    fn test_needs_patching_false() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("deployment.yaml");
+        
+        // Create deployment with new SHA
+        let yaml_content = create_test_deployment("test-image:new-sha");
+        fs::write(&file_path, yaml_content).unwrap();
+
+        let result = needs_patching(
+            file_path.to_str().unwrap(),
+            "new-sha".to_string(),
+        ).unwrap();
+
+        assert!(!result, "Should not need patching when SHA is the same");
+    }
+
+    #[test]
+    fn test_patch_deployment_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("deployment.yaml");
+        
+        // Create deployment with old SHA
+        let yaml_content = create_test_deployment("test-image:old-sha");
+        fs::write(&file_path, yaml_content).unwrap();
+
+        let result = patch_deployment(
+            file_path.to_str().unwrap(),
+            "test-image",
+            "new-sha",
+        );
+
+        assert!(result.is_ok(), "Patch should succeed");
+
+        // Verify the file was updated correctly
+        let updated_content = fs::read_to_string(&file_path).unwrap();
+        assert!(updated_content.contains("test-image:new-sha"), "Image should be updated with new SHA");
+    }
+
+    #[test]
+    fn test_patch_deployment_already_updated() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("deployment.yaml");
+        
+        // Create deployment with new SHA
+        let yaml_content = create_test_deployment("test-image:new-sha");
+        fs::write(&file_path, yaml_content).unwrap();
+
+        let result = patch_deployment(
+            file_path.to_str().unwrap(),
+            "test-image",
+            "new-sha",
+        );
+
+        assert!(result.is_err(), "Patch should fail when image is already updated");
+    }
+
+    #[test]
+    fn test_patch_deployment_invalid_yaml() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("deployment.yaml");
+        
+        // Create invalid YAML
+        fs::write(&file_path, "invalid: - yaml: content").unwrap();
+
+        let result = patch_deployment(
+            file_path.to_str().unwrap(),
+            "test-image",
+            "new-sha",
+        );
+
+        assert!(result.is_err(), "Patch should fail with invalid YAML");
+    }
+
+    #[test]
+    fn test_patch_deployment_missing_file() {
+        let result = patch_deployment(
+            "nonexistent/path/deployment.yaml",
+            "test-image",
+            "new-sha",
+        );
+
+        assert!(result.is_err(), "Patch should fail with missing file");
+    }
 }
