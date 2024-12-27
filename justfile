@@ -10,6 +10,7 @@ fmt:
 
 build:
   docker build -t kainlite/gitops-operator:local .
+  docker push kainlite/gitops-operator:local
 
 [private]
 release:
@@ -17,6 +18,6 @@ release:
 
 [private]
 import:
-  k3d image import kainlite/gitops-operator:local --cluster main
-  sd "image: .*" "image: kainlite/gitops-operator:local" deployment.yaml
-  kubectl apply -f deployment.yaml
+  kind load docker-image kainlite/gitops-operator:local
+  kubectl patch deployment gitops-operator -p '{"spec":{"template":{"spec":{"containers":[{"name":"gitops-operator","image":"kainlite/gitops-operator:local"}]}}}}'
+  kubectl rollout restart deploy gitops-operator

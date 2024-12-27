@@ -153,7 +153,7 @@ fn get_latest_master_commit(repo_path: &Path) -> Result<git2::Oid, git2::Error> 
         })?;
 
     // Try different branch name variations
-    let branch_names = ["refs/remotes/origin/master", "origin/master"];
+    let branch_names = ["refs/remotes/origin/master"];
 
     for &branch_name in &branch_names {
         println!("\nTrying to find branch: {}", branch_name);

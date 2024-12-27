@@ -61,4 +61,4 @@ $ curl 0.0.0.0:8000/reconcile
 ## Developing
 - Locally against a cluster: `cargo watch`
 - In-cluster: edit and `tilt up` [*](https://tilt.dev/)
-- Docker build: `just build`
+- Docker build & import to kind: `just build && just import`
