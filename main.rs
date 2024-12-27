@@ -8,9 +8,10 @@ use k8s_openapi::api::apps::v1::Deployment;
 use kube::runtime::{reflector, watcher, WatchStreamExt};
 use kube::{Api, Client, ResourceExt};
 use std::collections::BTreeMap;
-use tracing::{debug, warn};
+use std::path::Path;
+use tracing::{debug, span, warn, Level};
 
-use files::patch_deployment_and_commit;
+use files::{commit_changes, get_latest_master_commit, needs_patching, patch_deployment};
 use git::clone_repo;
 
 #[derive(serde::Serialize, Clone)]
@@ -74,11 +75,15 @@ fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
 
 // - GET /reconcile
 async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
+    let span = span!(Level::TRACE, "reconcile");
+    let _enter = span.enter();
+    tracing::debug!("Reconcile");
+
     let data: Vec<_> = store.state().iter().filter_map(|d| deployment_to_entry(d)).collect();
 
     for entry in &data {
         if !entry.config.enabled {
-            println!("continue");
+            tracing::event!(Level::DEBUG, "Config is disabled");
             continue;
         }
 
@@ -88,12 +93,32 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
 
         clone_repo(&entry.config.app_repository, &app_local_path);
         clone_repo(&entry.config.manifest_repository, &manifest_local_path);
-        let _ = patch_deployment_and_commit(
-            format!("/tmp/app-{}", &entry.name).as_ref(),
-            format!("/tmp/manifest-{}", &entry.name).as_ref(),
-            &entry.config.deployment_path,
-            &entry.config.image_name,
-        );
+
+        let app_repo_path = format!("/tmp/app-{}", &entry.name);
+        let manifest_repo_path = format!("/tmp/manifest-{}", &entry.name);
+
+        // Find the latest remote head
+        let new_sha = get_latest_master_commit(Path::new(&app_repo_path)).unwrap();
+        println!("New application SHA: {}", &new_sha);
+
+        if needs_patching(&manifest_repo_path, "".to_string()).unwrap_or(false) {
+            match patch_deployment(
+                &entry.config.deployment_path,
+                &entry.config.image_name,
+                &new_sha.to_string(),
+            ) {
+                Ok(_) => println!("Deployment patched successfully"),
+                Err(e) => println!("Failed to patch deployment: {:?}", e),
+            }
+
+            match commit_changes(&manifest_repo_path) {
+                Ok(_) => println!("Changes committed successfully"),
+                Err(e) => println!("Failed to commit changes: {:?}", e),
+            }
+        } else {
+            println!("Deployment is up to date");
+            continue;
+        }
     }
 
     Json(data)
@@ -101,9 +126,7 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    println!("Starting gitops-operator");
-
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt().json().init();
     let client = Client::try_default().await?;
     let api: Api<Deployment> = Api::all(client);
 

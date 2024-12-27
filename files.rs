@@ -12,11 +12,32 @@ use std::env;
 
 use git2::Cred;
 
-fn patch_image_tag(file_path: String, image_name: String, new_sha: String) -> Result<(), Error> {
-    println!("Patching image tag in deployment file: {}", file_path);
+pub fn needs_patching(file_path: &str, new_sha: String) -> Result<bool, Error> {
+    println!("Comparing deployment file: {}", file_path);
     let yaml_content = fs::read_to_string(&file_path).context("Failed to read deployment YAML file")?;
 
-    println!("before: {:?}", yaml_content);
+    // Parse the YAML into a Deployment resource
+    let deployment: Deployment =
+        serde_yaml::from_str(&yaml_content).context("Failed to parse YAML into Kubernetes Deployment")?;
+
+    // Modify deployment specifics
+    if let Some(spec) = deployment.spec {
+        if let Some(template) = spec.template.spec {
+            for container in &template.containers {
+                if container.image.as_ref().unwrap().contains(&new_sha) {
+                    println!("Image tag already updated... Aborting mission!");
+                    return Ok(false);
+                }
+            }
+        }
+    }
+
+    return Ok(true);
+}
+
+pub fn patch_deployment(file_path: &str, image_name: &str, new_sha: &str) -> Result<(), Error> {
+    println!("Patching image tag in deployment file: {}", file_path);
+    let yaml_content = fs::read_to_string(&file_path).context("Failed to read deployment YAML file")?;
 
     // Parse the YAML into a Deployment resource
     let mut deployment: Deployment =
@@ -40,52 +61,18 @@ fn patch_image_tag(file_path: String, image_name: String, new_sha: String) -> Re
     let updated_yaml =
         serde_yaml::to_string(&deployment).context("Failed to serialize updated deployment")?;
 
-    println!("updated yaml: {:?}", updated_yaml);
-
-    fs::write(file_path, updated_yaml).context("Failed to write updated YAML back to file")?;
-
-    Ok(())
+    fs::write(file_path, updated_yaml).context("Failed to write updated YAML back to file")
 }
 
-pub fn patch_deployment_and_commit(
-    app_repo_path: &str,
-    manifest_repo_path: &str,
-    file_name: &str,
-    image_name: &str,
-) -> Result<(), GitError> {
-    println!("Patching deployment and committing changes");
+pub fn commit_changes(manifest_repo_path: &str) -> Result<(), GitError> {
     let commit_message = "chore(refs): gitops-operator updating image tags";
-    let _app_repo = Repository::open(&app_repo_path)?;
     let manifest_repo = Repository::open(&manifest_repo_path)?;
 
-    // Find the latest remote head
-    let new_sha = get_latest_master_commit(Path::new(&app_repo_path))?.to_string();
-    println!("New application SHA: {}", new_sha);
-
-    // Perform changes
-    let patch = patch_image_tag(
-        format!("{}/{}", manifest_repo_path, file_name),
-        image_name.to_string(),
-        new_sha,
-    );
-
-    match patch {
-        Ok(_) => println!("Image tag updated successfully"),
-        Err(e) => {
-            println!("We don't need to update image tag: {:?}", e);
-            return Err(GitError::from_str(
-                "Aborting update image tag, already updated...",
-            ));
-        }
-    }
-
     // Stage and push changes
-    let _ = stage_and_push_changes(&manifest_repo, commit_message)?;
-
-    Ok(())
+    stage_and_push_changes(&manifest_repo, commit_message)
 }
 
-fn get_latest_master_commit(repo_path: &Path) -> Result<git2::Oid, git2::Error> {
+pub fn get_latest_master_commit(repo_path: &Path) -> Result<git2::Oid, git2::Error> {
     // Open the repository
     let repo = Repository::open(repo_path)?;
 

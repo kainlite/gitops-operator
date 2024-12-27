@@ -3,7 +3,6 @@ use git2::{
     Repository,
 };
 use std::env;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use git2::Signature;
@@ -61,14 +60,10 @@ pub fn clone_or_update_repo(url: &str, repo_path: PathBuf) -> Result<(), GitErro
     // Setup SSH key authentication
     let mut callbacks = RemoteCallbacks::new();
     callbacks.credentials(|_url, username_from_url, _allowed_types| {
-        // Dynamically find SSH key path
         let ssh_key_path = format!(
             "{}/.ssh/id_rsa_demo",
             env::var("HOME").expect("HOME environment variable not set")
         );
-
-        println!("Using SSH key: {}", &ssh_key_path);
-        println!("{}", Path::new(&ssh_key_path).exists());
 
         Cred::ssh_key(
             username_from_url.unwrap_or("git"),
@@ -220,9 +215,6 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
             env::var("HOME").expect("HOME environment variable not set")
         );
 
-        println!("Using SSH key: {}", &ssh_key_path);
-        println!("{}", Path::new(&ssh_key_path).exists());
-
         Cred::ssh_key(
             username_from_url.unwrap_or("git"),
             None,
@@ -237,27 +229,6 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
         Ok(CertificateCheckStatus::CertificateOk)
     });
 
-    // Print out our transfer progress.
-    callbacks.transfer_progress(|stats| {
-        if stats.received_objects() == stats.total_objects() {
-            print!(
-                "Resolving deltas {}/{}\r",
-                stats.indexed_deltas(),
-                stats.total_deltas()
-            );
-        } else if stats.total_objects() > 0 {
-            print!(
-                "Received {}/{} objects ({}) in {} bytes\r",
-                stats.received_objects(),
-                stats.total_objects(),
-                stats.indexed_objects(),
-                stats.received_bytes()
-            );
-        }
-        io::stdout().flush().unwrap();
-        true
-    });
-
     // Prepare push options
     let mut push_options = git2::PushOptions::new();
     push_options.remote_callbacks(callbacks);
@@ -267,16 +238,13 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
 
     println!("Pushing to remote: {}", remote.url().unwrap());
 
-    // Determine the current branch name
-    let branch_name = repo.head()?;
-    let refspec = format!("refs/heads/{}", branch_name.shorthand().unwrap_or("master"));
+    // We are only watching the master branch at the moment
+    let refspec = format!("refs/heads/master");
 
     println!("Pushing to remote branch: {}", &refspec);
 
     // Push changes
-    remote.push(&[&refspec], Some(&mut push_options))?;
-
-    Ok(())
+    remote.push(&[&refspec], Some(&mut push_options))
 }
 
 // Example usage in the context of the original code
