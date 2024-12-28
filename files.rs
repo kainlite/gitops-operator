@@ -135,10 +135,9 @@ pub fn get_latest_commit(repo_path: &Path, branch: &str) -> Result<git2::Oid, gi
     }
 
     // If we get here, we couldn't find the branch
-    Err(git2::Error::from_str(format!(
-        "Could not find {} branch in any expected location",
-        branch
-    ).as_str()))
+    Err(git2::Error::from_str(
+        format!("Could not find {} branch in any expected location", branch).as_str(),
+    ))
 }
 
 #[cfg(test)]
