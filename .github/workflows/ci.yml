@@ -78,9 +78,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           platforms: ${{ matrix.platform }}
 
-      - name: run tests
-        run: docker run $(docker build -q -f Dockerfile.test .) cargo test
-
       - name: extract rust-build-cache from docker
         uses: overmindtech/buildkit-cache-dance/extract@main
         with:
