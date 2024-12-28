@@ -20,13 +20,10 @@ pub fn needs_patching(file_path: &str, new_sha: String) -> Result<bool, Error> {
     let deployment: Deployment =
         serde_yaml::from_str(&yaml_content).context("Failed to parse YAML into Kubernetes Deployment")?;
 
-    println!("{:?}", deployment);
-
     // Modify deployment specifics
     if let Some(spec) = deployment.spec {
         if let Some(template) = spec.template.spec {
             for container in &template.containers {
-                println!("{:?}", container.image);
                 if container.image.as_ref().unwrap().contains(&new_sha) {
                     info!("Image tag already updated... Aborting mission!");
                     return Ok(false);
