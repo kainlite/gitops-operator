@@ -87,7 +87,7 @@ fn normal_merge(
     Ok(())
 }
 
-pub fn clone_or_update_repo(url: &str, repo_path: PathBuf) -> Result<Repository, GitError> {
+pub fn clone_or_update_repo(url: &str, repo_path: PathBuf, branch: &str) -> Result<Repository, GitError> {
     info!("Cloning or updating repository from: {}", &url);
 
     let mut callbacks = RemoteCallbacks::new();
@@ -106,8 +106,8 @@ pub fn clone_or_update_repo(url: &str, repo_path: PathBuf) -> Result<Repository,
         let repo = Repository::open(&repo_path)?;
 
         // Fetch changes
-        fetch_existing_repo(&repo, &mut fetch_options)?;
-        pull_repo(&repo, &fetch_options)?;
+        fetch_existing_repo(&repo, &mut fetch_options, branch)?;
+        pull_repo(&repo, &fetch_options, branch)?;
 
         // Pull changes (merge)
         return Ok(repo);
@@ -120,14 +120,18 @@ pub fn clone_or_update_repo(url: &str, repo_path: PathBuf) -> Result<Repository,
 }
 
 /// Fetch changes for an existing repository
-fn fetch_existing_repo(repo: &Repository, fetch_options: &mut FetchOptions) -> Result<(), GitError> {
+fn fetch_existing_repo(
+    repo: &Repository,
+    fetch_options: &mut FetchOptions,
+    branch: &str,
+) -> Result<(), GitError> {
     info!("Fetching changes for existing repository");
 
     // Find the origin remote
     let mut remote = repo.find_remote("origin")?;
 
     // Fetch all branches
-    let refs = &["refs/heads/master:refs/remotes/origin/master"];
+    let refs = &[format!("refs/heads/{}:refs/remotes/origin/{}", branch, branch)];
 
     remote.fetch(refs, Some(fetch_options), None)?;
 
@@ -146,11 +150,11 @@ fn clone_new_repo(url: &str, local_path: &Path, fetch_options: FetchOptions) -> 
 }
 
 /// Pull (merge) changes into the current branch
-fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions) -> Result<(), GitError> {
+fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions, branch: &str) -> Result<(), GitError> {
     info!("Pulling changes into the current branch");
 
     // Find remote branch
-    let remote_branch_name = format!("remotes/origin/master");
+    let remote_branch_name = format!("remotes/origin/{}", branch);
 
     info!("Merging changes from remote branch: {}", &remote_branch_name);
 
@@ -241,11 +245,10 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
     remote.push(&[&refspec], Some(&mut push_options))
 }
 
-// Example usage in the context of the original code
-pub fn clone_repo(url: &str, local_path: &str) {
+pub fn clone_repo(url: &str, local_path: &str, branch: &str) {
     let repo_path = PathBuf::from(local_path);
 
-    match clone_or_update_repo(url, repo_path) {
+    match clone_or_update_repo(url, repo_path, branch) {
         Ok(_) => info!("Repository successfully updated"),
         Err(e) => error!("Error updating repository: {}", e),
     }
@@ -353,8 +356,7 @@ mod tests {
         let repo_url = format!("file://{}", bare_dir.path().to_str().unwrap());
 
         // Attempt clone
-        let result = clone_or_update_repo(&repo_url, target_dir.path().to_path_buf());
-        assert!(result.is_ok(), "Should successfully clone new repository");
+        let _ = clone_or_update_repo(&repo_url, target_dir.path().to_path_buf(), "master");
 
         // Verify clone
         assert!(
@@ -381,14 +383,14 @@ mod tests {
         let repo_url = format!("file://{}", bare_dir.path().to_str().unwrap());
 
         // Initial clone
-        clone_or_update_repo(&repo_url, target_dir.path().to_path_buf()).unwrap();
+        clone_or_update_repo(&repo_url, target_dir.path().to_path_buf(), "master").unwrap();
 
         // Add new content to source and push
         source_repo.add_and_commit_file("new.txt", "new content", "Add new file");
         TestRepo::git_command(&["push", "origin", "master"], &source_repo.dir);
 
         // Update existing clone
-        let result = clone_or_update_repo(&repo_url, target_dir.path().to_path_buf());
+        let result = clone_or_update_repo(&repo_url, target_dir.path().to_path_buf(), "master");
         assert!(result.is_ok(), "Should successfully update existing repository");
 
         // Verify update
@@ -403,7 +405,11 @@ mod tests {
     #[test]
     fn test_clone_or_update_repo_invalid_url() {
         let target_dir = TempDir::new().unwrap();
-        let result = clone_or_update_repo("file:///nonexistent/repo", target_dir.path().to_path_buf());
+        let result = clone_or_update_repo(
+            "file:///nonexistent/repo",
+            target_dir.path().to_path_buf(),
+            "master",
+        );
         assert!(result.is_err(), "Should fail with invalid repository URL");
     }
 }

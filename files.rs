@@ -72,7 +72,7 @@ pub fn commit_changes(manifest_repo_path: &str) -> Result<(), GitError> {
     stage_and_push_changes(&manifest_repo, commit_message)
 }
 
-pub fn get_latest_master_commit(repo_path: &Path) -> Result<git2::Oid, git2::Error> {
+pub fn get_latest_commit(repo_path: &Path, branch: &str) -> Result<git2::Oid, git2::Error> {
     let repo = Repository::open(repo_path)?;
 
     debug!("Available branches:");
@@ -107,16 +107,20 @@ pub fn get_latest_master_commit(repo_path: &Path) -> Result<git2::Oid, git2::Err
     // Fetch the latest changes, including all branches
     info!("Fetching updates...");
     remote
-        .fetch(&["refs/remotes/origin/master"], Some(&mut fetch_opts), None)
+        .fetch(
+            &[format!("refs/remotes/origin/{}", &branch)],
+            Some(&mut fetch_opts),
+            None,
+        )
         .map_err(|e| {
             error!("Error during fetch: {}", e);
             e
         })?;
 
     // Try different branch name variations
-    let branch_names = ["refs/remotes/origin/master"];
+    let branch_names = [format!("refs/remotes/origin/{}", &branch)];
 
-    for &branch_name in &branch_names {
+    for branch_name in &branch_names {
         info!("Trying to find branch: {}", branch_name);
 
         // Try to find the branch reference directly
@@ -131,9 +135,10 @@ pub fn get_latest_master_commit(repo_path: &Path) -> Result<git2::Oid, git2::Err
     }
 
     // If we get here, we couldn't find the branch
-    Err(git2::Error::from_str(
-        "Could not find master branch in any expected location",
-    ))
+    Err(git2::Error::from_str(format!(
+        "Could not find {} branch in any expected location",
+        branch
+    ).as_str()))
 }
 
 #[cfg(test)]

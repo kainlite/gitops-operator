@@ -3,7 +3,7 @@ pub mod git;
 
 use axum::extract::State;
 use axum::{routing, Json, Router};
-use files::{commit_changes, get_latest_master_commit, needs_patching, patch_deployment};
+use files::{commit_changes, get_latest_commit, needs_patching, patch_deployment};
 use futures::{future, StreamExt};
 use git::clone_repo;
 use k8s_openapi::api::apps::v1::Deployment;
@@ -21,6 +21,7 @@ struct Config {
     manifest_repository: String,
     image_name: String,
     deployment_path: String,
+    observe_branch: String,
 }
 
 #[derive(serde::Serialize, Clone, Debug)]
@@ -56,6 +57,10 @@ fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
     let manifest_repository = annotations.get("gitops.operator.manifest_repository")?.to_string();
     let image_name = annotations.get("gitops.operator.image_name")?.to_string();
     let deployment_path = annotations.get("gitops.operator.deployment_path")?.to_string();
+    let observe_branch = annotations
+        .get("gitops.operator.observe_branch")
+        .unwrap_or(&"master".to_string())
+        .to_string();
 
     info!("Processing: {}/{}", &namespace, &name);
 
@@ -72,6 +77,7 @@ fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
             manifest_repository,
             image_name,
             deployment_path,
+            observe_branch,
         },
     })
 }
@@ -90,17 +96,22 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
         }
 
         // Perform reconciliation
-        let app_local_path = format!("/tmp/app-{}", &entry.name);
-        let manifest_local_path = format!("/tmp/manifest-{}", &entry.name);
+        let app_repo_path = format!("/tmp/app-{}-{}", &entry.name, &entry.config.observe_branch);
+        let manifest_repo_path = format!("/tmp/manifest-{}-{}", &entry.name, &entry.config.observe_branch);
 
-        clone_repo(&entry.config.app_repository, &app_local_path);
-        clone_repo(&entry.config.manifest_repository, &manifest_local_path);
-
-        let app_repo_path = format!("/tmp/app-{}", &entry.name);
-        let manifest_repo_path = format!("/tmp/manifest-{}", &entry.name);
+        clone_repo(
+            &entry.config.app_repository,
+            &app_repo_path,
+            &entry.config.observe_branch,
+        );
+        clone_repo(
+            &entry.config.manifest_repository,
+            &manifest_repo_path,
+            &entry.config.observe_branch,
+        );
 
         // Find the latest remote head
-        let new_sha = get_latest_master_commit(Path::new(&app_repo_path));
+        let new_sha = get_latest_commit(Path::new(&app_repo_path), &entry.config.observe_branch);
 
         let new_sha = match new_sha {
             Ok(sha) => sha,
