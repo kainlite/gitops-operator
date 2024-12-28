@@ -11,14 +11,18 @@ use std::path::Path;
 
 use tracing::{debug, error, info, warn};
 
-pub fn needs_patching(file_path: &str, new_sha: String) -> Result<bool, Error> {
-    info!("Comparing deployment file: {}", file_path);
-
+fn get_deployment_from_file(file_path: &str) -> Result<Deployment, Error> {
     let yaml_content = fs::read_to_string(&file_path).context("Failed to read deployment YAML file")?;
 
-    // Parse the YAML into a Deployment resource
     let deployment: Deployment =
         serde_yaml::from_str(&yaml_content).context("Failed to parse YAML into Kubernetes Deployment")?;
+
+    Ok(deployment)
+}
+
+pub fn needs_patching(file_path: &str, new_sha: String) -> Result<bool, Error> {
+    info!("Comparing deployment file: {}", file_path);
+    let deployment = get_deployment_from_file(file_path)?;
 
     // Modify deployment specifics
     if let Some(spec) = deployment.spec {
@@ -37,11 +41,7 @@ pub fn needs_patching(file_path: &str, new_sha: String) -> Result<bool, Error> {
 
 pub fn patch_deployment(file_path: &str, image_name: &str, new_sha: &str) -> Result<(), Error> {
     info!("Patching image tag in deployment file: {}", file_path);
-    let yaml_content = fs::read_to_string(&file_path).context("Failed to read deployment YAML file")?;
-
-    // Parse the YAML into a Deployment resource
-    let mut deployment: Deployment =
-        serde_yaml::from_str(&yaml_content).context("Failed to parse YAML into Kubernetes Deployment")?;
+    let mut deployment = get_deployment_from_file(file_path)?;
 
     // Modify deployment specifics
     if let Some(spec) = deployment.spec.as_mut() {
