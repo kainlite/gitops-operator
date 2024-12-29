@@ -21,6 +21,28 @@ kind create cluster
 cargo watch
 ```
 
+To observe a deployment just add these annotations to your configuration file (this is what I'm using to self-observe
+and update the manifests repo for this project):
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    gitops.operator.app_repository: git@github.com:kainlite/gitops-operator.git
+    gitops.operator.deployment_path: app/00-deployment.yaml
+    gitops.operator.enabled: 'true'
+    gitops.operator.image_name: kainlite/gitops-operator
+    gitops.operator.manifest_repository: git@github.com:kainlite/gitops-operator-manifests.git
+    gitops.operator.namespace: default
+  labels:
+    app: gitops-operator
+  name: gitops-operator
+  namespace: default
+spec:
+  replicas: 1
+...
+```
+
 ### In-Cluster
 Apply manifests from [here](https://github.com/kainlite/gitops-operator-manifests), then you can trigger it manually using port-forward: `kubectl port-forward service/gitops-operator 8000:80`
 
