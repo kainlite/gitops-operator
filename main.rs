@@ -22,6 +22,7 @@ struct Config {
     image_name: String,
     deployment_path: String,
     observe_branch: String,
+    tag_type: String,
 }
 
 #[derive(serde::Serialize, Clone, Debug)]
@@ -61,6 +62,16 @@ fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
         .get("gitops.operator.observe_branch")
         .unwrap_or(&"master".to_string())
         .to_string();
+    let tag_type = annotations
+        .get("gitops.operator.tag_type")
+        .unwrap_or(&"long".to_string())
+        .to_string();
+
+    let tag_type = match tag_type.as_str() {
+        "short" => "short",
+        _ => "long",
+    }
+    .to_string();
 
     info!("Processing: {}/{}", &namespace, &name);
 
@@ -78,6 +89,7 @@ fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
             image_name,
             deployment_path,
             observe_branch,
+            tag_type,
         },
     })
 }
@@ -99,19 +111,33 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
         let app_repo_path = format!("/tmp/app-{}-{}", &entry.name, &entry.config.observe_branch);
         let manifest_repo_path = format!("/tmp/manifest-{}-{}", &entry.name, &entry.config.observe_branch);
 
-        clone_repo(
-            &entry.config.app_repository,
-            &app_repo_path,
-            &entry.config.observe_branch,
-        );
-        clone_repo(
-            &entry.config.manifest_repository,
-            &manifest_repo_path,
-            &entry.config.observe_branch,
-        );
+        // Create concurrent clone operations
+        let app_clone = {
+            let repo = entry.config.app_repository.clone();
+            let path = app_repo_path.clone();
+            let branch = entry.config.observe_branch.clone();
+            tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch))
+        };
+
+        let manifest_clone = {
+            let repo = entry.config.manifest_repository.clone();
+            let path = manifest_repo_path.clone();
+            let branch = entry.config.observe_branch.clone();
+            tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch))
+        };
+
+        // Wait for both clones to complete
+        if let Err(e) = tokio::try_join!(app_clone, manifest_clone) {
+            error!("Failed to clone repositories: {:?}", e);
+            continue;
+        }
 
         // Find the latest remote head
-        let new_sha = get_latest_commit(Path::new(&app_repo_path), &entry.config.observe_branch);
+        let new_sha = get_latest_commit(
+            Path::new(&app_repo_path),
+            &entry.config.observe_branch,
+            &entry.config.tag_type,
+        );
 
         let new_sha = match new_sha {
             Ok(sha) => sha,
@@ -123,8 +149,8 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
 
         let deployment_path = format!("{}/{}", &manifest_repo_path, &entry.config.deployment_path);
 
-        if needs_patching(&deployment_path, new_sha.to_string()).unwrap_or(false) {
-            match patch_deployment(&deployment_path, &entry.config.image_name, &new_sha.to_string()) {
+        if needs_patching(&deployment_path, &new_sha).unwrap_or(false) {
+            match patch_deployment(&deployment_path, &entry.config.image_name, &new_sha) {
                 Ok(_) => info!("Deployment patched successfully"),
                 Err(e) => error!("Failed to patch deployment: {:?}", e),
             }
@@ -418,7 +444,6 @@ mod tests {
             "gitops.operator.app_repository".to_string(),
             "https://github.com/org/app".to_string(),
         );
-        // ... add other annotations except one ...
 
         let deployment = create_test_deployment("test-app", "default", "my-container:1.0.0", annotations);
 

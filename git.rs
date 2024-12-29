@@ -2,6 +2,7 @@ use git2::{
     build::RepoBuilder, CertificateCheckStatus, Cred, Error as GitError, FetchOptions, RemoteCallbacks,
     Repository,
 };
+
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -279,12 +280,19 @@ mod tests {
             Self::git_command(&["config", "user.name", "test"], &dir);
             Self::git_command(&["config", "user.email", "test@example.com"], &dir);
 
-            // Create and commit initial file
+            // Create initial commit on master branch
             fs::write(dir.path().join("README.md"), "# Test Repository").unwrap();
             Self::git_command(&["add", "."], &dir);
             Self::git_command(&["commit", "-m", "Initial commit"], &dir);
 
+            // Ensure we're on master branch (some git versions might use 'main' by default)
+            Self::git_command(&["checkout", "-b", "master"], &dir);
+            Self::git_command(&["push", "origin", "master"], &dir);
+
+            std::thread::sleep(Duration::from_millis(1));
+
             let repo = Repository::open(dir.path()).unwrap();
+
             Self { dir, repo }
         }
 
@@ -330,6 +338,10 @@ mod tests {
     fn test_stage_and_push_changes() {
         let test_repo = TestRepo::new();
 
+        // Verify we're on master branch before starting
+        let head = test_repo.repo.head().unwrap();
+        assert_eq!(head.shorthand().unwrap(), "master", "Should be on master branch");
+
         // Create and add a new file
         test_repo.add_and_commit_file("test.txt", "test content", "Test commit");
 
@@ -372,6 +384,7 @@ mod tests {
         );
         let content = fs::read_to_string(target_dir.path().join("test.txt")).unwrap();
         assert_eq!(content, "test content", "Cloned content should match source");
+        fs::remove_dir_all(&target_dir.path()).unwrap();
     }
 
     #[test]
@@ -403,6 +416,7 @@ mod tests {
         );
         let content = fs::read_to_string(target_dir.path().join("new.txt")).unwrap();
         assert_eq!(content, "new content", "Updated content should match source");
+        fs::remove_dir_all(&target_dir.path()).unwrap();
     }
 
     #[test]
