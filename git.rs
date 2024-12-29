@@ -1,7 +1,4 @@
-use git2::{
-    build::RepoBuilder, CertificateCheckStatus, Cred, Error as GitError, FetchOptions, RemoteCallbacks,
-    Repository,
-};
+use git2::{build::RepoBuilder, Cred, Error as GitError, FetchOptions, RemoteCallbacks, Repository};
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -30,12 +27,6 @@ impl DefaultCallbacks for RemoteCallbacks<'_> {
                 Path::new(&ssh_key_path),
                 None,
             )
-        });
-
-        // TODO: implement certificate check, potentially insecure
-        let _ = &self.certificate_check(|_cert, _host| {
-            // Return true to indicate we accept the host
-            Ok(CertificateCheckStatus::CertificateOk)
         });
 
         self
