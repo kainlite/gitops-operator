@@ -269,6 +269,10 @@ spec:
         // Initialize a new git repository
         let repo = Repository::init(&repo_path).unwrap();
 
+        // Add user name and email
+        repo.config().unwrap().set_str("user.name", "Test User").unwrap();
+        repo.config().unwrap().set_str("user.email", "test_username@test.com").unwrap();
+
         // Add origin remote
         let origin_url = format!("file://{}", temp_dir.path().to_str().unwrap());
         let _origin = repo.remote("origin", &origin_url).unwrap();

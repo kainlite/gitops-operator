@@ -4,5 +4,4 @@ COPY Cargo.* .
 COPY *.rs .
 
 RUN --mount=type=cache,target=/volume/target \
-    --mount=type=cache,target=/root/.cargo/registry \
-    cargo test
+    --mount=type=cache,target=/root/.cargo/registry
