@@ -1,4 +1,5 @@
-FROM clux/muslrust:stable AS builder
+ARG BUILDPLATFORM
+FROM --platform=$BUILDPLATFORM clux/muslrust:stable AS builder
 
 COPY Cargo.* .
 COPY *.rs .
