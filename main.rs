@@ -94,12 +94,79 @@ fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
     })
 }
 
+async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
+    info!("Processing: {}/{}", &entry.namespace, &entry.name);
+    if !entry.config.enabled {
+        warn!("Config is disabled for deplyment: {}", &entry.name);
+    }
+
+    // Perform reconciliation
+    let app_repo_path = format!("/tmp/app-{}-{}", &entry.name, &entry.config.observe_branch);
+    let manifest_repo_path = format!("/tmp/manifest-{}-{}", &entry.name, &entry.config.observe_branch);
+
+    // Create concurrent clone operations
+    let app_clone = {
+        let repo = entry.config.app_repository.clone();
+        let path = app_repo_path.clone();
+        let branch = entry.config.observe_branch.clone();
+        tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch))
+    };
+
+    let manifest_clone = {
+        let repo = entry.config.manifest_repository.clone();
+        let path = manifest_repo_path.clone();
+        let branch = entry.config.observe_branch.clone();
+        tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch))
+    };
+
+    // Wait for both clones to complete
+    if let Err(e) = tokio::try_join!(app_clone, manifest_clone) {
+        error!("Failed to clone repositories: {:?}", e);
+    }
+
+    // Find the latest remote head
+    let new_sha = get_latest_commit(
+        Path::new(&app_repo_path),
+        &entry.config.observe_branch,
+        &entry.config.tag_type,
+    );
+
+    let new_sha = match new_sha {
+        Ok(sha) => sha,
+        Err(e) => {
+            error!("Failed to get latest SHA: {:?}", e);
+            "latest".to_string()
+        }
+    };
+
+    let deployment_path = format!("{}/{}", &manifest_repo_path, &entry.config.deployment_path);
+
+    if needs_patching(&deployment_path, &new_sha).unwrap_or(false) {
+        match patch_deployment(&deployment_path, &entry.config.image_name, &new_sha) {
+            Ok(_) => info!("Deployment patched successfully"),
+            Err(e) => error!("Failed to patch deployment: {:?}", e),
+        }
+
+        match commit_changes(&manifest_repo_path) {
+            Ok(_) => info!("Changes committed successfully"),
+            Err(e) => error!("Failed to commit changes: {:?}", e),
+        }
+
+        info!("Deployment patched successfully");
+        Ok(())
+    } else {
+        info!("Deployment is up to date, proceeding to next deployment...");
+        Err("Deployment is up to date, proceeding to next deployment...")
+    }
+}
+
 // - GET /reconcile
 // #[instrument]
 async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
     tracing::info!("Starting reconciliation");
 
     let data: Vec<_> = store.state().iter().filter_map(|d| deployment_to_entry(d)).collect();
+    let mut handles: Vec<_> = vec![];
 
     for entry in &data {
         if !entry.config.enabled {
@@ -107,63 +174,12 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
             continue;
         }
 
-        // Perform reconciliation
-        let app_repo_path = format!("/tmp/app-{}-{}", &entry.name, &entry.config.observe_branch);
-        let manifest_repo_path = format!("/tmp/manifest-{}-{}", &entry.name, &entry.config.observe_branch);
+        let deployment = process_deployment(entry.clone());
 
-        // Create concurrent clone operations
-        let app_clone = {
-            let repo = entry.config.app_repository.clone();
-            let path = app_repo_path.clone();
-            let branch = entry.config.observe_branch.clone();
-            tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch))
-        };
-
-        let manifest_clone = {
-            let repo = entry.config.manifest_repository.clone();
-            let path = manifest_repo_path.clone();
-            let branch = entry.config.observe_branch.clone();
-            tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch))
-        };
-
-        // Wait for both clones to complete
-        if let Err(e) = tokio::try_join!(app_clone, manifest_clone) {
-            error!("Failed to clone repositories: {:?}", e);
-            continue;
-        }
-
-        // Find the latest remote head
-        let new_sha = get_latest_commit(
-            Path::new(&app_repo_path),
-            &entry.config.observe_branch,
-            &entry.config.tag_type,
-        );
-
-        let new_sha = match new_sha {
-            Ok(sha) => sha,
-            Err(e) => {
-                error!("Failed to get latest SHA: {:?}", e);
-                continue;
-            }
-        };
-
-        let deployment_path = format!("{}/{}", &manifest_repo_path, &entry.config.deployment_path);
-
-        if needs_patching(&deployment_path, &new_sha).unwrap_or(false) {
-            match patch_deployment(&deployment_path, &entry.config.image_name, &new_sha) {
-                Ok(_) => info!("Deployment patched successfully"),
-                Err(e) => error!("Failed to patch deployment: {:?}", e),
-            }
-
-            match commit_changes(&manifest_repo_path) {
-                Ok(_) => info!("Changes committed successfully"),
-                Err(e) => error!("Failed to commit changes: {:?}", e),
-            }
-        } else {
-            info!("Deployment is up to date, proceeding to next deployment...");
-            continue;
-        }
+        handles.push(deployment);
     }
+
+    let _ = future::join_all(handles).await;
 
     Json(data)
 }
