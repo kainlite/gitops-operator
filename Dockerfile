@@ -1,14 +1,13 @@
 FROM clux/muslrust:stable AS builder
 
-ARG TARGETARCH
-
 COPY Cargo.* .
 COPY *.rs .
 
 RUN --mount=type=cache,target=/volume/target \
     --mount=type=cache,target=/root/.cargo/registry \
     cargo build --release --bin gitops-operator && \
-    mv /volume/target/$TARGETARCH-unknown-linux-musl/release/gitops-operator .
+    if [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then ARCHITECTURE=aarch64; else ARCHITECTURE=x86_64; fi && \
+    mv /volume/target/$ARCHITECTURE-unknown-linux-musl/release/gitops-operator .
 
 FROM cgr.dev/chainguard/static
 
