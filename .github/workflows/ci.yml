@@ -76,7 +76,7 @@ jobs:
           #push: ${{ github.ref == 'refs/heads/main' }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          platforms: ${{ matrix.platform }}
+          platforms: linux/amd64,linux/arm64 # ${{ matrix.platform }}
 
       - name: extract rust-build-cache from docker
         uses: overmindtech/buildkit-cache-dance/extract@main
