@@ -23,8 +23,6 @@ struct Config {
     deployment_path: String,
     observe_branch: String,
     tag_type: String,
-    ssh_key_name: String,
-    ssh_key_namespace: String,
 }
 
 #[derive(serde::Serialize, Clone, Debug)]
