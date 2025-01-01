@@ -16,6 +16,7 @@ impl DefaultCallbacks for RemoteCallbacks<'_> {
     fn prepare_callbacks(&mut self) -> &Self {
         // Setup SSH key authentication
         let _ = &self.credentials(|_url, username_from_url, _allowed_types| {
+
             let ssh_key_path = format!(
                 "{}/.ssh/id_rsa_demo",
                 env::var("HOME").expect("HOME environment variable not set")
