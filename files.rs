@@ -64,15 +64,20 @@ pub fn patch_deployment(file_path: &str, image_name: &str, new_sha: &str) -> Res
     fs::write(file_path, updated_yaml).context("Failed to write updated YAML back to file")
 }
 
-pub fn commit_changes(manifest_repo_path: &str) -> Result<(), GitError> {
+pub fn commit_changes(manifest_repo_path: &str, ssh_key: &str) -> Result<(), GitError> {
     let commit_message = "chore(refs): gitops-operator updating image tags";
     let manifest_repo = Repository::open(&manifest_repo_path)?;
 
     // Stage and push changes
-    stage_and_push_changes(&manifest_repo, commit_message)
+    stage_and_push_changes(&manifest_repo, commit_message, ssh_key)
 }
 
-pub fn get_latest_commit(repo_path: &Path, branch: &str, tag_type: &str) -> Result<String, git2::Error> {
+pub fn get_latest_commit(
+    repo_path: &Path,
+    branch: &str,
+    tag_type: &str,
+    ssh_key: &str,
+) -> Result<String, git2::Error> {
     let repo = Repository::open(repo_path)?;
 
     debug!("Available branches:");
@@ -94,7 +99,7 @@ pub fn get_latest_commit(repo_path: &Path, branch: &str, tag_type: &str) -> Resu
     let mut fetch_opts = FetchOptions::new();
 
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.prepare_callbacks();
+    callbacks.prepare_callbacks(ssh_key.to_string());
 
     fetch_opts.remote_callbacks(callbacks);
 
@@ -306,8 +311,14 @@ spec:
         )
         .unwrap();
 
-        let short_commit_id = get_latest_commit(repo_path, "master", "short").unwrap();
-        let long_commit_id = get_latest_commit(repo_path, "master", "long").unwrap();
+        let short_commit_id = get_latest_commit(repo_path, "master", "short", "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==").unwrap();
+        let long_commit_id = get_latest_commit(
+            repo_path,
+            "master",
+            "long",
+            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
+        )
+        .unwrap();
 
         println!("Short commit ID: {}", short_commit_id);
         println!("Long commit ID: {}", long_commit_id);

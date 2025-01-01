@@ -7,10 +7,13 @@ use files::{commit_changes, get_latest_commit, needs_patching, patch_deployment}
 use futures::{future, StreamExt};
 use git::clone_repo;
 use k8s_openapi::api::apps::v1::Deployment;
+use k8s_openapi::api::core::v1::Secret;
 use kube::runtime::{reflector, watcher, WatchStreamExt};
 use kube::{Api, Client, ResourceExt};
 use std::collections::BTreeMap;
 use std::path::Path;
+// use std::string::FromUtf8Error;
+use anyhow::{Context, Error};
 use tracing::{debug, error, info, instrument, warn};
 
 #[derive(serde::Serialize, Clone, Debug)]
@@ -23,6 +26,8 @@ struct Config {
     deployment_path: String,
     observe_branch: String,
     tag_type: String,
+    ssh_key_name: String,
+    ssh_key_namespace: String,
 }
 
 #[derive(serde::Serialize, Clone, Debug)]
@@ -73,6 +78,9 @@ fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
     }
     .to_string();
 
+    let ssh_key_name = annotations.get("gitops.operator.ssh_key_name")?.to_string();
+    let ssh_key_namespace = annotations.get("gitops.operator.ssh_key_namespace")?.to_string();
+
     info!("Processing: {}/{}", &namespace, &name);
 
     Some(Entry {
@@ -90,8 +98,26 @@ fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
             deployment_path,
             observe_branch,
             tag_type,
+            ssh_key_name,
+            ssh_key_namespace,
         },
     })
+}
+
+async fn get_ssh_key(ssh_key_name: &str, ssh_key_namespace: &str) -> Result<String, Error> {
+    let client = Client::try_default().await?;
+    let secrets: Api<Secret> = Api::namespaced(client, ssh_key_namespace);
+    let secret = secrets.get(ssh_key_name).await?;
+
+    let secret_data = secret.data.context("Failed to read the data section")?;
+
+    let encoded_key = secret_data
+        .get("ssh-privatekey")
+        .context("Failed to read field: ssh-privatekey in data, consider recreating the secret with kubectl create secret generic name --from-file=ssh-privatekey=/path")?;
+
+    let key_bytes = encoded_key.0.clone();
+
+    String::from_utf8(key_bytes).context("Failed to convert key to string")
 }
 
 async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
@@ -99,6 +125,15 @@ async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
     if !entry.config.enabled {
         warn!("Config is disabled for deplyment: {}", &entry.name);
     }
+
+    let ssh_key_secret = match get_ssh_key(&entry.config.ssh_key_name, &entry.config.ssh_key_namespace).await
+    {
+        Ok(key) => key,
+        Err(e) => {
+            error!("Failed to get SSH key: {:?}", e);
+            return Err("Failed to get SSH key");
+        }
+    };
 
     // Perform reconciliation
     let app_repo_path = format!("/tmp/app-{}-{}", &entry.name, &entry.config.observe_branch);
@@ -109,14 +144,16 @@ async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
         let repo = entry.config.app_repository.clone();
         let path = app_repo_path.clone();
         let branch = entry.config.observe_branch.clone();
-        tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch))
+        let ssh_key_secret = ssh_key_secret.clone();
+        tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch, &ssh_key_secret))
     };
 
     let manifest_clone = {
         let repo = entry.config.manifest_repository.clone();
         let path = manifest_repo_path.clone();
         let branch = entry.config.observe_branch.clone();
-        tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch))
+        let ssh_key_secret = ssh_key_secret.clone();
+        tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch, &ssh_key_secret))
     };
 
     // Wait for both clones to complete
@@ -129,6 +166,7 @@ async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
         Path::new(&app_repo_path),
         &entry.config.observe_branch,
         &entry.config.tag_type,
+        &ssh_key_secret,
     );
 
     let new_sha = match new_sha {
@@ -147,7 +185,7 @@ async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
             Err(e) => error!("Failed to patch deployment: {:?}", e),
         }
 
-        match commit_changes(&manifest_repo_path) {
+        match commit_changes(&manifest_repo_path, &ssh_key_secret) {
             Ok(_) => info!("Changes committed successfully"),
             Err(e) => error!("Failed to commit changes: {:?}", e),
         }
@@ -271,6 +309,11 @@ mod tests {
             "gitops.operator.deployment_path".to_string(),
             "deployments/app.yaml".to_string(),
         );
+        annotations.insert("gitops.operator.ssh_key_name".to_string(), "ssh-key".to_string());
+        annotations.insert(
+            "gitops.operator.ssh_key_namespace".to_string(),
+            "myns".to_string(),
+        );
 
         let deployment =
             create_test_deployment("test-app", "default", "my-container:1.0.0", annotations.clone());
@@ -293,6 +336,8 @@ mod tests {
         );
         assert_eq!(entry.config.image_name, "my-app");
         assert_eq!(entry.config.deployment_path, "deployments/app.yaml");
+        assert_eq!(entry.config.ssh_key_name, "ssh-key");
+        assert_eq!(entry.config.ssh_key_namespace, "myns");
     }
 
     #[test]
@@ -319,6 +364,11 @@ mod tests {
         annotations.insert(
             "gitops.operator.deployment_path".to_string(),
             "deployments/app.yaml".to_string(),
+        );
+        annotations.insert("gitops.operator.ssh_key_name".to_string(), "ssh-key".to_string());
+        annotations.insert(
+            "gitops.operator.ssh_key_namespace".to_string(),
+            "myns".to_string(),
         );
 
         let deployment = create_test_deployment("test-app", "default", "my-container", annotations);
@@ -430,6 +480,11 @@ mod tests {
         annotations.insert(
             "gitops.operator.deployment_path".to_string(),
             "deployments/app.yaml".to_string(),
+        );
+        annotations.insert("gitops.operator.ssh_key_name".to_string(), "ssh-key".to_string());
+        annotations.insert(
+            "gitops.operator.ssh_key_namespace".to_string(),
+            "myns".to_string(),
         );
 
         let deployment = create_test_deployment("test-app", "default", "my-container:1.0.0", annotations);

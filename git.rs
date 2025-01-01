@@ -1,6 +1,5 @@
 use git2::{build::RepoBuilder, Cred, Error as GitError, FetchOptions, RemoteCallbacks, Repository};
 
-use std::env;
 use std::path::{Path, PathBuf};
 
 use git2::Signature;
@@ -8,28 +7,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tracing::{error, info, warn};
 
-pub trait DefaultCallbacks {
-    fn prepare_callbacks(&mut self) -> &Self;
+pub trait DefaultCallbacks<'a> {
+    fn prepare_callbacks(&mut self, ssh_key: String) -> &Self;
 }
 
-impl DefaultCallbacks for RemoteCallbacks<'_> {
-    fn prepare_callbacks(&mut self) -> &Self {
-        // Setup SSH key authentication
-        let _ = &self.credentials(|_url, username_from_url, _allowed_types| {
-
-            let ssh_key_path = format!(
-                "{}/.ssh/id_rsa_demo",
-                env::var("HOME").expect("HOME environment variable not set")
-            );
-
-            Cred::ssh_key(
-                username_from_url.unwrap_or("git"),
-                None,
-                Path::new(&ssh_key_path),
-                None,
-            )
+impl<'a> DefaultCallbacks<'a> for RemoteCallbacks<'a> {
+    fn prepare_callbacks(&mut self, ssh_key: String) -> &Self {
+        self.credentials(move |_url, username_from_url, _allowed_types| {
+            Cred::ssh_key_from_memory(username_from_url.unwrap_or("git"), None, &ssh_key, None)
         });
-
         self
     }
 }
@@ -80,11 +66,16 @@ fn normal_merge(
     Ok(())
 }
 
-pub fn clone_or_update_repo(url: &str, repo_path: PathBuf, branch: &str) -> Result<Repository, GitError> {
+pub fn clone_or_update_repo(
+    url: &str,
+    repo_path: PathBuf,
+    branch: &str,
+    ssh_key: &str,
+) -> Result<Repository, GitError> {
     info!("Cloning or updating repository from: {}", &url);
 
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.prepare_callbacks();
+    callbacks.prepare_callbacks(ssh_key.to_string());
 
     // Prepare fetch options
     let mut fetch_options = FetchOptions::new();
@@ -181,7 +172,11 @@ fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions, branch: &str) -> 
     }
 }
 
-pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result<(), GitError> {
+pub fn stage_and_push_changes(
+    repo: &Repository,
+    commit_message: &str,
+    ssh_key: &str,
+) -> Result<(), GitError> {
     info!("Staging and pushing changes");
 
     // Stage all changes (equivalent to git add .)
@@ -218,7 +213,7 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
 
     // Prepare push credentials
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.prepare_callbacks();
+    callbacks.prepare_callbacks(ssh_key.to_string());
 
     // Prepare push options
     let mut push_options = git2::PushOptions::new();
@@ -238,10 +233,10 @@ pub fn stage_and_push_changes(repo: &Repository, commit_message: &str) -> Result
     remote.push(&[&refspec], Some(&mut push_options))
 }
 
-pub fn clone_repo(url: &str, local_path: &str, branch: &str) {
+pub fn clone_repo(url: &str, local_path: &str, branch: &str, ssh_key: &str) {
     let repo_path = PathBuf::from(local_path);
 
-    match clone_or_update_repo(url, repo_path, branch) {
+    match clone_or_update_repo(url, repo_path, branch, ssh_key) {
         Ok(_) => info!("Repository successfully updated"),
         Err(e) => error!("Error updating repository: {}", e),
     }
@@ -338,7 +333,11 @@ mod tests {
         test_repo.add_and_commit_file("test.txt", "test content", "Test commit");
 
         // Stage and commit changes
-        let _ = stage_and_push_changes(&test_repo.repo, "Test commit");
+        let _ = stage_and_push_changes(
+            &test_repo.repo,
+            "Test commit",
+            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
+        );
 
         std::thread::sleep(Duration::from_millis(1));
 
@@ -363,7 +362,12 @@ mod tests {
 
         // Attempt clone
         fs::remove_dir_all(&target_dir.path()).unwrap();
-        let _ = clone_or_update_repo(&repo_url, target_dir.path().to_path_buf(), "master");
+        let _ = clone_or_update_repo(
+            &repo_url,
+            target_dir.path().to_path_buf(),
+            "master",
+            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
+        );
 
         // Verify clone
         assert!(
@@ -392,14 +396,25 @@ mod tests {
         let repo_url = format!("file://{}", bare_dir.path().to_str().unwrap());
 
         // Initial clone
-        clone_or_update_repo(&repo_url, target_dir.path().to_path_buf(), "master").unwrap();
+        clone_or_update_repo(
+            &repo_url,
+            target_dir.path().to_path_buf(),
+            "master",
+            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
+        )
+        .unwrap();
 
         // Add new content to source and push
         source_repo.add_and_commit_file("new.txt", "new content", "Add new file");
         TestRepo::git_command(&["push", "origin", "master"], &source_repo.dir);
 
         // Update existing clone
-        let _ = clone_or_update_repo(&repo_url, target_dir.path().to_path_buf(), "master");
+        let _ = clone_or_update_repo(
+            &repo_url,
+            target_dir.path().to_path_buf(),
+            "master",
+            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
+        );
 
         // Verify update
         assert!(
@@ -418,6 +433,7 @@ mod tests {
             "file:///nonexistent/repo",
             target_dir.path().to_path_buf(),
             "master",
+            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ=="
         );
         assert!(result.is_err(), "Should fail with invalid repository URL");
     }

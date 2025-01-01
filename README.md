@@ -23,6 +23,8 @@ cargo watch
 
 To observe a deployment just add these annotations to your configuration file (this is what I'm using to self-observe
 and update the manifests repo for this project):
+
+These are all required fields, or the deployment will be skipped:
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -34,6 +36,8 @@ metadata:
     gitops.operator.image_name: kainlite/gitops-operator
     gitops.operator.manifest_repository: git@github.com:kainlite/gitops-operator-manifests.git
     gitops.operator.namespace: default
+    gitops.operator.ssh_key_name: ssh-key
+    gitops.operator.ssh_key_namespace: gitops-operator
   labels:
     app: gitops-operator
   name: gitops-operator
@@ -42,6 +46,12 @@ spec:
   replicas: 1
 ...
 ```
+
+Note: you can create the secret as follows:
+```
+kubectl -n gitops-operator create secret generic ssh-key --from-file=ssh-privatekey=/home/user/.ssh/id_rsa
+```
+If you don't want the operator to be able to read all secrets you can limit it with RBAC, it will attempt to read only what you tell it to anyway.
 
 ### In-Cluster
 Apply manifests from [here](https://github.com/kainlite/gitops-operator-manifests), then you can trigger it manually using port-forward: `kubectl port-forward service/gitops-operator 8000:80`
