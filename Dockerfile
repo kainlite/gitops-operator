@@ -1,5 +1,5 @@
 ARG BUILDPLATFORM
-FROM --platform=$BUILDPLATFORM clux/muslrust:stable AS builder
+FROM --platform=$BUILDPLATFORM rust:1.83 AS builder
 
 COPY Cargo.* .
 COPY *.rs .
@@ -7,7 +7,7 @@ COPY *.rs .
 RUN --mount=type=cache,target=/volume/target \
     --mount=type=cache,target=/root/.cargo/registry \
     cargo build --release --bin gitops-operator && \
-    if [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then ARCHITECTURE=aarch64; else ARCHITECTURE=x86_64; fi && \
+    if [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then ARCHITECTURE=arm32v7; elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then ARCHITECTURE=aarch64; else ARCHITECTURE=x86_64; fi && \
     mv /volume/target/$ARCHITECTURE-unknown-linux-musl/release/gitops-operator .
 
 FROM cgr.dev/chainguard/static
