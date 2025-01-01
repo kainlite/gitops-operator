@@ -5,7 +5,7 @@ COPY *.rs .
 
 RUN apt update && apt install -y libgit2-dev && cargo build --release --bin gitops-operator
 
-FROM --platform=$BUILDPLATFORM rust:1.83-slim
+FROM rust:1.83-slim
 
 COPY --from=builder --chown=nonroot:nonroot /target/release/gitops-operator /app/
 COPY files/known_hosts /home/nonroot/.ssh/known_hosts
