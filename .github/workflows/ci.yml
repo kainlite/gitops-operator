@@ -83,9 +83,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           #push: ${{ github.ref == 'refs/heads/main' }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          # push: true
+          # tags: ${{ steps.meta.outputs.tags }}
           # platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
           outputs: type=image,"name=${{ env.DOCKERHUB_REPO }}",push-by-digest=true,name-canonical=true,push=true
 
@@ -101,9 +102,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           #push: ${{ github.ref == 'refs/heads/main' }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          # push: true
+          # tags: ${{ steps.meta.outputs.tags }}
           # platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/arm/v7
           outputs: type=image,"name=${{ env.DOCKERHUB_REPO }}",push-by-digest=true,name-canonical=true,push=true
 
