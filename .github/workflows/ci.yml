@@ -23,7 +23,6 @@ jobs:
         platform:
           - linux/amd64
           - linux/arm64
-          - linux/arm/v7
     steps:
       - name: Prepare
         run: |
@@ -88,25 +87,6 @@ jobs:
           # platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
-          outputs: type=image,"name=${{ env.DOCKERHUB_REPO }}",push-by-digest=true,name-canonical=true,push=true
-
-      - name: docker build and push with cache
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.arm32v7
-          # when not using buildkit cache
-          #cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          #cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          # when using buildkit-cache-dance
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          #push: ${{ github.ref == 'refs/heads/main' }}
-          # push: true
-          # tags: ${{ steps.meta.outputs.tags }}
-          # platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/arm/v7
           outputs: type=image,"name=${{ env.DOCKERHUB_REPO }}",push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest

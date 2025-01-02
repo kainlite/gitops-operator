@@ -1,4 +1,4 @@
-name: ci-armv7
+name: lint
 
 on:
   pull_request:
