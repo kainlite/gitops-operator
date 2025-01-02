@@ -14,7 +14,9 @@ ENV CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc \
     CC_armv7_unknown_linux_gnueabihf=arm-linux-gnueabihf-gcc \
     CXX_armv7_unknown_linux_gnueabihf=arm-linux-gnueabihf-g++
 
-RUN cargo build --target armv7-unknown-linux-gnueabihf --release
+RUN --mount=type=cache,target=/volume/target \
+    --mount=type=cache,target=/root/.cargo/registry \
+    cargo build --target armv7-unknown-linux-gnueabihf --release
 
 FROM alpine:3.21
 
