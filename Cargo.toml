@@ -32,7 +32,7 @@ features = ["runtime"]
 
 [dev-dependencies]
 tokio-test = "0.4.3"
-mockall = "0.12.1"
+mockall = "0.13.1"
 assert_matches = "1.5.0"
 tempfile = "3.8.1"
 tower = { version = "0.4", features = ["util"] }
