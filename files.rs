@@ -311,7 +311,13 @@ spec:
         )
         .unwrap();
 
-        let short_commit_id = get_latest_commit(repo_path, "master", "short", "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==").unwrap();
+        let short_commit_id = get_latest_commit(
+            repo_path,
+            "master",
+            "short",
+            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
+        )
+        .unwrap();
         let long_commit_id = get_latest_commit(
             repo_path,
             "master",

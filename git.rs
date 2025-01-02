@@ -433,7 +433,7 @@ mod tests {
             "file:///nonexistent/repo",
             target_dir.path().to_path_buf(),
             "master",
-            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ=="
+            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
         );
         assert!(result.is_err(), "Should fail with invalid repository URL");
     }

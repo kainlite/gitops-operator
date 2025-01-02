@@ -46,16 +46,16 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=pr
 
-      # - name: Rust Build Cache for Docker
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: rust-build-cache
-      #     key: ${{ runner.os }}-build-cache-${{ hashFiles('**/Cargo.toml') }}
+      - name: Rust Build Cache for Docker
+        uses: actions/cache@v4
+        with:
+          path: rust-build-cache
+          key: ${{ runner.os }}-build-cache-${{ hashFiles('**/Cargo.toml') }}
 
-      # - name: inject rust-build-cache into docker
-      #   uses: overmindtech/buildkit-cache-dance/inject@main
-      #   with:
-      #     cache-source: rust-build-cache
+      - name: inject rust-build-cache into docker
+        uses: overmindtech/buildkit-cache-dance/inject@main
+        with:
+          cache-source: rust-build-cache
 
       - name: Docker login
         uses: docker/login-action@v3
@@ -64,7 +64,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Docker build and push with cache
+      - name: docker build (amd64 and arm64) and push with cache
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -72,18 +72,35 @@ jobs:
           #cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
           #cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
           # when using buildkit-cache-dance
-          # cache-from: type=gha
-          # cache-to: type=gha,mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           #push: ${{ github.ref == 'refs/heads/main' }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          platforms: ${{ matrix.platform }}
-          # platforms: linux/amd64,linux/arm64,linux/arm32v7
+          # platforms: ${{ matrix.platform }}
+          platforms: linux/amd64,linux/arm64
 
-      # - name: extract rust-build-cache from docker
-      #   uses: overmindtech/buildkit-cache-dance/extract@main
-      #   with:
-      #     cache-source: rust-build-cache
+      - name: docker build and push with cache
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.arm32v7
+          # when not using buildkit cache
+          #cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+          #cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+          # when using buildkit-cache-dance
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          #push: ${{ github.ref == 'refs/heads/main' }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          # platforms: ${{ matrix.platform }}
+          platforms: linux/arm/v7
+
+      - name: extract rust-build-cache from docker
+        uses: overmindtech/buildkit-cache-dance/extract@main
+        with:
+          cache-source: rust-build-cache
 
   lint:
     runs-on: ubuntu-latest
