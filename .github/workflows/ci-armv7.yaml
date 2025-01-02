@@ -82,8 +82,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           #push: ${{ github.ref == 'refs/heads/main' }}
-          # push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          push: true
+          # tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # platforms: linux/arm/v7
           platforms: ${{ matrix.platform }}
