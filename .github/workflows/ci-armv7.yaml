@@ -84,9 +84,9 @@ jobs:
           #push: ${{ github.ref == 'refs/heads/main' }}
           # push: true
           # tags: ${{ steps.meta.outputs.tags }}
-          # platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/arm/v7
+          # platforms: linux/arm/v7
+          platforms: ${{ matrix.platform }}
           outputs: type=image,"name=${{ env.DOCKERHUB_REPO }}",push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
