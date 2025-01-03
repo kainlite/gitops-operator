@@ -23,6 +23,7 @@ jobs:
         platform:
           - linux/amd64
           - linux/arm64
+          - linux/arm/v7
     steps:
       - name: Prepare
         run: |
@@ -34,7 +35,6 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # Build and push with docker buildx
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@v3
         with:
@@ -57,7 +57,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: rust-build-cache
-          key: ${{ runner.os }}-build-cache-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-${{ env.PLATFORM_PAIR }}-build-cache-${{ hashFiles('**/Cargo.toml') }}
 
       - name: inject rust-build-cache into docker
         uses: overmindtech/buildkit-cache-dance/inject@main
@@ -66,126 +66,23 @@ jobs:
 
       - name: Docker login
         uses: docker/login-action@v3
-        #if: github.event_name != 'pull_request'
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: docker build (amd64 and arm64) and push with cache
-        uses: docker/build-push-action@v6
+      - name: Build and push by digest
         id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
-          # when not using buildkit cache
-          #cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          #cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          # when using buildkit-cache-dance
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          #push: ${{ github.ref == 'refs/heads/main' }}
-          push: true
-          # tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # platforms: linux/amd64,linux/arm64
           platforms: ${{ matrix.platform }}
-          outputs: type=image,"name=${{ env.DOCKERHUB_REPO }}",push-by-digest=true,name-canonical=true,push=true
-
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"          
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-${{ env.PLATFORM_PAIR }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: extract rust-build-cache from docker
-        uses: overmindtech/buildkit-cache-dance/extract@main
-        with:
-          cache-source: rust-build-cache
-
-  build-arm32:
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - linux/amd64
-    steps:
-      - name: Prepare
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=linux-arm-v7" >> $GITHUB_ENV   
-
-      - uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      # Build and push with docker buildx
-      - name: Setup docker buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          buildkitd-config: .github/buildkitd.toml
-
-      - name: Configure tags based on git tags + latest
-        uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ${{ github.repository }}
-          tags: |
-            type=sha,prefix=,suffix=,format=short
-            type=sha,prefix=,suffix=,format=long
-            type=ref,event=branch
-            type=pep440,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=pr
-
-      - name: Rust Build Cache for Docker
-        uses: actions/cache@v4
-        with:
-          path: rust-build-cache
-          key: ${{ runner.os }}-build-cache-${{ hashFiles('**/Cargo.toml') }}
-
-      - name: inject rust-build-cache into docker
-        uses: overmindtech/buildkit-cache-dance/inject@main
-        with:
-          cache-source: rust-build-cache
-
-      - name: Docker login
-        uses: docker/login-action@v3
-        #if: github.event_name != 'pull_request'
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: docker build and push with cache
-        uses: docker/build-push-action@v6
-        id: build
-        with:
-          context: .
-          file: Dockerfile.arm32v7
-          # when not using buildkit cache
-          #cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          #cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          # when using buildkit-cache-dance
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          #push: ${{ github.ref == 'refs/heads/main' }}
           push: true
-          # tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/arm/v7
-          # platforms: ${{ matrix.platform }}
           outputs: type=image,"name=${{ env.DOCKERHUB_REPO }}",push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            BUILDPLATFORM=${{ matrix.platform }}
+            TARGETPLATFORM=${{ matrix.platform }}
 
       - name: Export digest
         run: |
@@ -210,7 +107,6 @@ jobs:
     runs-on: ubuntu-24.04
     needs:
       - build
-      - build-arm32
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
@@ -221,7 +117,6 @@ jobs:
 
       - name: Docker login
         uses: docker/login-action@v3
-        #if: github.event_name != 'pull_request'
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
@@ -233,7 +128,7 @@ jobs:
         uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ${{ github.repository }}
+          images: ${{ env.DOCKERHUB_REPO }}
           tags: |
             type=sha,prefix=,suffix=,format=short
             type=sha,prefix=,suffix=,format=long

@@ -1,47 +1,46 @@
-pub mod files;
-pub mod git;
+use crate::files::{needs_patching, patch_deployment};
 
+use crate::git::{clone_repo, commit_changes, get_latest_commit};
+use anyhow::{Context, Error};
 use axum::extract::State;
-use axum::{routing, Json, Router};
-use files::{commit_changes, get_latest_commit, needs_patching, patch_deployment};
-use futures::{future, StreamExt};
-use git::clone_repo;
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::Secret;
-use kube::runtime::{reflector, watcher, WatchStreamExt};
 use kube::{Api, Client, ResourceExt};
 use std::collections::BTreeMap;
 use std::path::Path;
-// use std::string::FromUtf8Error;
-use anyhow::{Context, Error};
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{error, info, warn};
 
-#[derive(serde::Serialize, Clone, Debug)]
-struct Config {
-    enabled: bool,
-    namespace: String,
-    app_repository: String,
-    manifest_repository: String,
-    image_name: String,
-    deployment_path: String,
-    observe_branch: String,
-    tag_type: String,
-    ssh_key_name: String,
-    ssh_key_namespace: String,
-}
+use axum::Json;
+use futures::future;
+use kube::runtime::reflector;
 
-#[derive(serde::Serialize, Clone, Debug)]
-struct Entry {
-    container: String,
-    name: String,
-    namespace: String,
-    annotations: BTreeMap<String, String>,
-    version: String,
-    config: Config,
-}
 type Cache = reflector::Store<Deployment>;
 
-fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+pub struct Config {
+    pub enabled: bool,
+    pub namespace: String,
+    pub app_repository: String,
+    pub manifest_repository: String,
+    pub image_name: String,
+    pub deployment_path: String,
+    pub observe_branch: String,
+    pub tag_type: String,
+    pub ssh_key_name: String,
+    pub ssh_key_namespace: String,
+}
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+pub struct Entry {
+    pub container: String,
+    pub name: String,
+    pub namespace: String,
+    pub annotations: BTreeMap<String, String>,
+    pub version: String,
+    pub config: Config,
+}
+
+pub fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
     let name = d.name_any();
     let namespace = d.namespace()?;
     let annotations = d.metadata.annotations.as_ref()?;
@@ -120,7 +119,7 @@ async fn get_ssh_key(ssh_key_name: &str, ssh_key_namespace: &str) -> Result<Stri
     String::from_utf8(key_bytes).context("Failed to convert key to string")
 }
 
-async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
+pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
     info!("Processing: {}/{}", &entry.namespace, &entry.name);
     if !entry.config.enabled {
         warn!("Config is disabled for deplyment: {}", &entry.name);
@@ -198,9 +197,7 @@ async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
     }
 }
 
-// - GET /reconcile
-// #[instrument]
-async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
+pub async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
     tracing::info!("Starting reconciliation");
 
     let data: Vec<_> = store.state().iter().filter_map(|d| deployment_to_entry(d)).collect();
@@ -222,43 +219,14 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
     Json(data)
 }
 
-#[instrument]
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt().json().init();
-    let client = Client::try_default().await?;
-    let api: Api<Deployment> = Api::all(client);
-
-    info!("Starting gitops-operator");
-
-    let (reader, writer) = reflector::store();
-    let watch = reflector(writer, watcher(api, Default::default()))
-        .default_backoff()
-        .touched_objects()
-        .for_each(|r| {
-            future::ready(match r {
-                Ok(o) => debug!("Saw {} in {}", o.name_any(), o.namespace().unwrap()),
-                Err(e) => warn!("watcher error: {e}"),
-            })
-        });
-    tokio::spawn(watch); // poll forever
-
-    let app = Router::new()
-        .route("/health", routing::get(|| async { "up" }))
-        .route("/reconcile", routing::get(reconcile))
-        .with_state(reader) // routes can read from the reflector store
-        .layer(tower_http::trace::TraceLayer::new_for_http());
-
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;
-    axum::serve(listener, app.into_make_service()).await?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
+
+    use axum::extract::State;
+    use kube::runtime::reflector;
+
+    use k8s_openapi::api::apps::v1::DeploymentSpec;
     use k8s_openapi::api::core::v1::{Container, PodSpec, PodTemplateSpec};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 

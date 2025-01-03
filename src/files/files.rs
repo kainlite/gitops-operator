@@ -1,15 +1,10 @@
-use crate::git::stage_and_push_changes;
-use crate::git::DefaultCallbacks;
 use anyhow::Context;
 use anyhow::Error;
-use git2::Error as GitError;
-use git2::{FetchOptions, RemoteCallbacks, Repository};
 use k8s_openapi::api::apps::v1::Deployment;
 use serde_yaml;
 use std::fs;
-use std::path::Path;
 
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 
 fn get_deployment_from_file(file_path: &str) -> Result<Deployment, Error> {
     let yaml_content = fs::read_to_string(&file_path).context("Failed to read deployment YAML file")?;
@@ -62,95 +57,6 @@ pub fn patch_deployment(file_path: &str, image_name: &str, new_sha: &str) -> Res
         serde_yaml::to_string(&deployment).context("Failed to serialize updated deployment")?;
 
     fs::write(file_path, updated_yaml).context("Failed to write updated YAML back to file")
-}
-
-pub fn commit_changes(manifest_repo_path: &str, ssh_key: &str) -> Result<(), GitError> {
-    let commit_message = "chore(refs): gitops-operator updating image tags";
-    let manifest_repo = Repository::open(&manifest_repo_path)?;
-
-    // Stage and push changes
-    stage_and_push_changes(&manifest_repo, commit_message, ssh_key)
-}
-
-pub fn get_latest_commit(
-    repo_path: &Path,
-    branch: &str,
-    tag_type: &str,
-    ssh_key: &str,
-) -> Result<String, git2::Error> {
-    let repo = Repository::open(repo_path)?;
-
-    debug!("Available branches:");
-    for branch in repo.branches(None)? {
-        let (branch, branch_type) = branch?;
-        debug!(
-            "{} ({:?})",
-            branch.name()?.unwrap_or("invalid utf-8"),
-            branch_type
-        );
-    }
-
-    debug!("Available remotes:");
-    for remote_name in repo.remotes()?.iter() {
-        debug!("{}", remote_name.unwrap_or("invalid utf-8"));
-    }
-
-    // Create fetch options with verbose progress
-    let mut fetch_opts = FetchOptions::new();
-
-    let mut callbacks = RemoteCallbacks::new();
-    callbacks.prepare_callbacks(ssh_key.to_string());
-
-    fetch_opts.remote_callbacks(callbacks);
-
-    // Get the remote, with explicit error handling
-    let mut remote = repo.find_remote("origin").map_err(|e| {
-        error!("Error finding remote 'origin': {}", e);
-        e
-    })?;
-
-    // Fetch the latest changes, including all branches
-    info!("Fetching updates...");
-    remote
-        .fetch(
-            &[format!("refs/remotes/origin/{}", &branch)],
-            Some(&mut fetch_opts),
-            None,
-        )
-        .map_err(|e| {
-            error!("Error during fetch: {}", e);
-            e
-        })?;
-
-    // Try different branch name variations
-    let branch_names = [format!("refs/remotes/origin/{}", &branch)];
-
-    for branch_name in &branch_names {
-        info!("Trying to find branch: {}", branch_name);
-
-        match repo.find_reference(branch_name) {
-            Ok(reference) => {
-                let commit = reference.peel_to_commit()?;
-                let commit_id = commit.id();
-
-                // Convert the commit ID to the appropriate format
-                info!("Found commit: {} in branch {}", commit_id, branch_name);
-                match tag_type {
-                    "short" => return Ok(commit_id.to_string()[..7].to_string()),
-                    "long" => return Ok(commit_id.to_string()),
-                    _ => Err(git2::Error::from_str(
-                        "Invalid tag_type. Must be 'short' or 'long'",
-                    )),
-                }?;
-            }
-            Err(e) => error!("Could not find reference {}: {}", branch_name, e),
-        }
-    }
-
-    // If we get here, we couldn't find the branch
-    Err(git2::Error::from_str(
-        format!("Could not find {} branch in any expected location", branch).as_str(),
-    ))
 }
 
 #[cfg(test)]
@@ -264,80 +170,5 @@ spec:
         let result = patch_deployment("nonexistent/path/deployment.yaml", "test-image", "new-sha");
 
         assert!(result.is_err(), "Patch should fail with missing file");
-    }
-
-    #[test]
-    fn test_get_latest_commit() {
-        let temp_dir = TempDir::new().unwrap();
-        let repo_path = temp_dir.path();
-
-        // Initialize a new git repository
-        let repo = Repository::init(&repo_path).unwrap();
-
-        // Add user name and email
-        repo.config().unwrap().set_str("user.name", "Test User").unwrap();
-        repo.config()
-            .unwrap()
-            .set_str("user.email", "test_username@test.com")
-            .unwrap();
-
-        // Add origin remote
-        let origin_url = format!("file://{}", temp_dir.path().to_str().unwrap());
-        let _origin = repo.remote("origin", &origin_url).unwrap();
-
-        // Create empty master branch
-        let file_path = repo_path.join("test.txt");
-        fs::write(&file_path, "test").unwrap();
-
-        let mut index = repo.index().unwrap();
-        index.add_path(Path::new("test.txt")).unwrap();
-
-        let tree_id = index.write_tree().unwrap();
-        let tree = repo.find_tree(tree_id).unwrap();
-        let sig = repo.signature().unwrap();
-        let commit_oid = repo
-            .commit(Some("HEAD"), &sig, &sig, "Test commit", &tree, &[])
-            .unwrap();
-
-        // Set HEAD to point to master
-        repo.set_head("refs/heads/master").unwrap();
-
-        // Create the remote reference manually
-        repo.reference(
-            "refs/remotes/origin/master",
-            commit_oid,
-            true,
-            "create remote master reference",
-        )
-        .unwrap();
-
-        let short_commit_id = get_latest_commit(
-            repo_path,
-            "master",
-            "short",
-            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
-        )
-        .unwrap();
-        let long_commit_id = get_latest_commit(
-            repo_path,
-            "master",
-            "long",
-            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
-        )
-        .unwrap();
-
-        println!("Short commit ID: {}", short_commit_id);
-        println!("Long commit ID: {}", long_commit_id);
-
-        assert_eq!(
-            short_commit_id.len(),
-            7,
-            "Short commit ID should be 7 characters long"
-        );
-        assert_eq!(
-            long_commit_id.len(),
-            40,
-            "Long commit ID should be 40 characters long"
-        );
     }
 }
