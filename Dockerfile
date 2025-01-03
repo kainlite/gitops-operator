@@ -3,6 +3,7 @@ FROM --platform=$BUILDPLATFORM clux/muslrust:stable AS builder
 ARG TARGETPLATFORM
 
 WORKDIR /app
+COPY . .
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     case "$TARGETPLATFORM" in \
@@ -13,8 +14,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     esac && \
     rustup target add "$RUST_TARGET" && \
     cargo fetch
-
-COPY . .
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target-${TARGETPLATFORM//\//-} \
