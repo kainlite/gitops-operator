@@ -1,4 +1,4 @@
-pub mod git;
-pub mod files;
 pub mod configuration;
+pub mod files;
+pub mod git;
 pub mod telemetry;
