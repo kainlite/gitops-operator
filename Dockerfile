@@ -3,7 +3,6 @@ FROM --platform=$BUILDPLATFORM clux/muslrust:stable AS builder
 ARG TARGETPLATFORM
 
 WORKDIR /app
-COPY Cargo.toml Cargo.lock ./
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     case "$TARGETPLATFORM" in \
@@ -14,6 +13,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     esac && \
     rustup target add "$RUST_TARGET" && \
     cargo fetch
+
+COPY . .
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target-${TARGETPLATFORM//\//-} \
@@ -26,9 +27,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     RUSTFLAGS='-C target-feature=+crt-static' cargo build --release --target "$RUST_TARGET" && \
     strip "target/$RUST_TARGET/release/gitops-operator" && \
     mv "target/$RUST_TARGET/release/gitops-operator" /gitops-operator
-
-COPY src src
-COPY files files
 
 FROM cgr.dev/chainguard/static:latest
 
