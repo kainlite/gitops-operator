@@ -84,7 +84,7 @@ pub fn clone_or_update_repo(
 
     // Check if repository already exists
     if repo_path.exists() {
-        info!("Repository already exists, pulling...");
+        info!("Repository already exists ({}), pulling...", &repo_path.display());
 
         // Open existing repository
         let repo = Repository::open(&repo_path)?;
@@ -96,7 +96,7 @@ pub fn clone_or_update_repo(
         // Pull changes (merge)
         return Ok(repo);
     } else {
-        info!("Repository does not exist, cloning...");
+        info!("Repository does not exist, cloning: {}", &repo_path.display());
 
         // Clone new repository
         return clone_new_repo(url, &repo_path, fetch_options);
@@ -109,7 +109,10 @@ fn fetch_existing_repo(
     fetch_options: &mut FetchOptions,
     branch: &str,
 ) -> Result<(), GitError> {
-    info!("Fetching changes for existing repository");
+    info!(
+        "Fetching changes for existing repository: {}",
+        &repo.path().display()
+    );
 
     // Find the origin remote
     let mut remote = repo.find_remote("origin")?;
@@ -135,12 +138,20 @@ fn clone_new_repo(url: &str, local_path: &Path, fetch_options: FetchOptions) -> 
 
 /// Pull (merge) changes into the current branch
 fn pull_repo(repo: &Repository, branch: &str) -> Result<(), GitError> {
-    info!("Pulling changes into the current branch");
+    info!(
+        "Pulling changes into the current branch: {}/{}",
+        &repo.path().display(),
+        &branch
+    );
 
     // Find remote branch
     let remote_branch_name = format!("remotes/origin/{}", branch);
 
-    info!("Merging changes from remote branch: {}", &remote_branch_name);
+    info!(
+        "Merging changes from remote branch: {}/{}",
+        &repo.path().display(),
+        &remote_branch_name
+    );
 
     // Annotated commit for merge
     let fetch_head = repo.find_reference("FETCH_HEAD")?;
@@ -149,7 +160,11 @@ fn pull_repo(repo: &Repository, branch: &str) -> Result<(), GitError> {
     // Perform merge analysis
     let (merge_analysis, _) = repo.merge_analysis(&[&fetch_commit])?;
 
-    info!("Merge analysis result: {:?}", merge_analysis);
+    info!(
+        "Merge analysis for {}, result: {:?}",
+        &repo.path().display(),
+        merge_analysis
+    );
 
     if merge_analysis.is_fast_forward() {
         let refname = format!("refs/remotes/origin/master");
@@ -165,7 +180,7 @@ fn pull_repo(repo: &Repository, branch: &str) -> Result<(), GitError> {
 
         Ok(())
     } else if merge_analysis.is_up_to_date() {
-        info!("Repository is up to date");
+        info!("Repository is up to date: {}", &repo.path().display());
         Ok(())
     } else {
         Err(GitError::from_str("Unsupported merge analysis case"))
@@ -177,12 +192,12 @@ pub fn stage_and_push_changes(
     commit_message: &str,
     ssh_key: &str,
 ) -> Result<(), GitError> {
-    info!("Staging and pushing changes");
+    info!("Staging and pushing changes for: {}", &repo.path().display());
 
     // Stage all changes (equivalent to git add .)
     let mut index = repo.index()?;
     if index.has_conflicts() {
-        warn!("Merge conflicts detected...");
+        warn!("Merge conflicts detected for {}", &repo.path().display());
         repo.checkout_index(Some(&mut index), None)?;
         return Ok(());
     }
@@ -243,7 +258,7 @@ pub fn clone_repo(url: &str, local_path: &str, branch: &str, ssh_key: &str) {
     let repo_path = PathBuf::from(local_path);
 
     match clone_or_update_repo(url, repo_path, branch, ssh_key) {
-        Ok(_) => info!("Repository successfully updated"),
+        Ok(_) => info!("Repository successfully updated: {}", &local_path),
         Err(e) => error!("Error updating repository: {}", e),
     }
 }
@@ -294,7 +309,7 @@ pub fn get_latest_commit(
     })?;
 
     // Fetch the latest changes, including all branches
-    info!("Fetching updates...");
+    info!("Fetching updates for: {}", &repo_path.display());
     remote
         .fetch(
             &[format!("refs/remotes/origin/{}", &branch)],
