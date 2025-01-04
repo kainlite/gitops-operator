@@ -7,6 +7,7 @@ use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::Secret;
 use kube::{Api, Client, ResourceExt};
 use std::collections::BTreeMap;
+use std::fs::remove_dir_all;
 use std::path::Path;
 use tracing::{error, info, warn};
 
@@ -186,7 +187,13 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
 
         match commit_changes(&manifest_repo_path, &ssh_key_secret) {
             Ok(_) => info!("Changes committed successfully"),
-            Err(e) => error!("Failed to commit changes: {:?}", e),
+            Err(e) => {
+                let _ = remove_dir_all(&manifest_repo_path);
+                error!(
+                    "Failed to commit changes, cleaning up manifests repo for next run: {:?}",
+                    e
+                );
+            }
         }
 
         info!("Deployment patched successfully");

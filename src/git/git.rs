@@ -91,7 +91,7 @@ pub fn clone_or_update_repo(
 
         // Fetch changes
         fetch_existing_repo(&repo, &mut fetch_options, branch)?;
-        pull_repo(&repo, &fetch_options, branch)?;
+        pull_repo(&repo, branch)?;
 
         // Pull changes (merge)
         return Ok(repo);
@@ -134,7 +134,7 @@ fn clone_new_repo(url: &str, local_path: &Path, fetch_options: FetchOptions) -> 
 }
 
 /// Pull (merge) changes into the current branch
-fn pull_repo(repo: &Repository, _fetch_options: &FetchOptions, branch: &str) -> Result<(), GitError> {
+fn pull_repo(repo: &Repository, branch: &str) -> Result<(), GitError> {
     info!("Pulling changes into the current branch");
 
     // Find remote branch
@@ -181,6 +181,12 @@ pub fn stage_and_push_changes(
 
     // Stage all changes (equivalent to git add .)
     let mut index = repo.index()?;
+    if index.has_conflicts() {
+        warn!("Merge conflicts detected...");
+        repo.checkout_index(Some(&mut index), None)?;
+        return Ok(());
+    }
+
     index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
     index.write()?;
 
