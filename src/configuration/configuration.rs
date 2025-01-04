@@ -181,7 +181,7 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
 
     if needs_patching(&deployment_path, &new_sha).unwrap_or(false) {
         match patch_deployment(&deployment_path, &entry.config.image_name, &new_sha) {
-            Ok(_) => info!("Deployment patched successfully"),
+            Ok(_) => info!("File patched successfully for: {}", &entry.name),
             Err(e) => error!("Failed to patch deployment: {:?}", e),
         }
 
@@ -196,7 +196,7 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
             }
         }
 
-        info!("Deployment patched successfully");
+        info!("Deployment patched successfully: {}", &entry.name);
         Ok(())
     } else {
         info!("Deployment is up to date, proceeding to next deployment...");
