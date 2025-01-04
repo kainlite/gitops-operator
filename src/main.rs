@@ -14,8 +14,8 @@ type Cache = reflector::Store<Deployment>;
 // - GET /reconcile
 #[tracing::instrument(
     name = "Reconcile",
-    skip(),
-        fields(
+    skip(store),
+    fields(
         request_id = %Uuid::new_v4(),
     )
 )]
