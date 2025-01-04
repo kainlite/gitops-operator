@@ -20,7 +20,9 @@ kind create cluster
 # kustomize build . | kubectl apply -f -
 cargo watch -- cargo run
 # or handy to debug and be able to read logs and events from the tracer
-RUST_LOG=info cargo watch -- cargo run | jq -R '. as $line | try (fromjson | .msg ) catch $line'
+RUST_LOG=info cargo watch -- cargo run | jq -R '. as $line | try (fromjson | .time + " " + .msg + " " + .target) catch $line'
+# or from the deployed version
+stern -o raw -n gitops-operator gitops | jq -R '. as $line | try (fromjson | .time + " " + .msg + " " + .target) catch $line'
 ```
 
 To observe a deployment just add these annotations to your configuration file (this is what I'm using to self-observe
