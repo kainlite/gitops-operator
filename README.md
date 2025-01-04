@@ -18,7 +18,9 @@ Run against your current Kubernetes context:
 kind create cluster
 ## Apply the manifests from the gitops-operator-manifests 
 # kustomize build . | kubectl apply -f -
-cargo watch
+cargo watch -- cargo run
+# or handy to debug and be able to read logs and events from the tracer
+RUST_LOG=info cargo watch -- cargo run | jq -R '. as $line | try (fromjson | .msg ) catch $line'
 ```
 
 To observe a deployment just add these annotations to your configuration file (this is what I'm using to self-observe
