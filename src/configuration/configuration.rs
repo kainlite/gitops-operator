@@ -348,6 +348,7 @@ mod tests {
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
         );
+        annotations.insert("gitops.operator.notifications".to_string(), "true".to_string());
 
         let deployment =
             create_test_deployment("test-app", "default", "my-container:1.0.0", annotations.clone());
@@ -404,6 +405,7 @@ mod tests {
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
         );
+        annotations.insert("gitops.operator.notifications".to_string(), "false".to_string());
 
         let deployment = create_test_deployment("test-app", "default", "my-container", annotations);
 
@@ -520,6 +522,7 @@ mod tests {
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
         );
+        annotations.insert("gitops.operator.notifications".to_string(), "true".to_string());
 
         let deployment = create_test_deployment("test-app", "default", "my-container:1.0.0", annotations);
 
