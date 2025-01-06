@@ -1,4 +1,5 @@
 use axum::extract::State;
+use axum::http;
 use axum::{routing, Json, Router};
 use futures::{future, StreamExt};
 use gitops_operator::configuration::{reconcile as config_reconcile, Entry};
@@ -6,6 +7,8 @@ use gitops_operator::telemetry::{get_subscriber, init_subscriber};
 use k8s_openapi::api::apps::v1::Deployment;
 use kube::runtime::{reflector, watcher, WatchStreamExt};
 use kube::{Api, Client, ResourceExt};
+use tower_http::trace::TraceLayer;
+use tracing::Level;
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
@@ -26,10 +29,10 @@ async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
 #[instrument]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    info!("Starting gitops-operator");
-
-    let subscriber = get_subscriber("gitops-operator".into(), "info".into());
+    let subscriber = get_subscriber("gitops-operator".into(), "debug,tower_http=debug".into());
     init_subscriber(subscriber);
+
+    info!("Starting gitops-operator");
 
     let client = Client::try_default().await?;
     let api: Api<Deployment> = Api::all(client);
@@ -49,8 +52,19 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/health", routing::get(|| async { "up" }))
         .route("/reconcile", routing::get(reconcile))
-        .with_state(reader) // routes can read from the reflector store
-        .layer(tower_http::trace::TraceLayer::new_for_http());
+        .with_state(reader)
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|request: &http::Request<_>| {
+                tracing::span!(
+                    Level::INFO,
+                    "http_request",
+                    method = %request.method(),
+                    uri = %request.uri(),
+                    version = ?request.version(),
+                )
+            }),
+        );
+    // .layer(tower_http::trace::TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;
     axum::serve(listener, app.into_make_service()).await?;

@@ -21,6 +21,8 @@ kind create cluster
 cargo watch -- cargo run
 # or handy to debug and be able to read logs and events from the tracer
 RUST_LOG=info cargo watch -- cargo run | jq -R '. as $line | try (fromjson | .time + " " + .msg + " " + .target) catch $line'
+# or using bunyan
+RUST_LOG=info cargo watch -- cargo run | bunyan
 # or from the deployed version
 stern -o raw -n gitops-operator gitops | jq -R '. as $line | try (fromjson | .time + " " + .msg + " " + .target) catch $line'
 ```
@@ -42,6 +44,7 @@ metadata:
     gitops.operator.namespace: default
     gitops.operator.ssh_key_name: ssh-key
     gitops.operator.ssh_key_namespace: gitops-operator
+    gitops.operator.notifications: true
   labels:
     app: gitops-operator
   name: gitops-operator
@@ -56,6 +59,12 @@ Note: you can create the secret as follows:
 kubectl -n gitops-operator create secret generic ssh-key --from-file=ssh-privatekey=/home/user/.ssh/id_rsa
 ```
 If you don't want the operator to be able to read all secrets you can limit it with RBAC, it will attempt to read only what you tell it to anyway.
+
+In order to be able to send notifications (following the Slack format), you can create a secret like that (this is a
+global config):
+```
+kubectl create secret generic webhook-secret  -n gitops-operator --from-literal=webhook-url=https://hooks.slack.com/services/...
+```
 
 ### In-Cluster
 Apply manifests from [here](https://github.com/kainlite/gitops-operator-manifests), then you can trigger it manually using port-forward: `kubectl port-forward service/gitops-operator 8000:80`

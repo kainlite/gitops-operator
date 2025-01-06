@@ -22,7 +22,7 @@ impl<'a> DefaultCallbacks<'a> for RemoteCallbacks<'a> {
 
 fn create_signature<'a>() -> Result<Signature<'a>, GitError> {
     let name = "GitOps Operator";
-    let email = "gitops-operator+kainlite@gmail.com";
+    let email = "kainlite+gitops@gmail.com";
 
     // Get current timestamp
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
@@ -428,7 +428,7 @@ mod tests {
     fn test_create_signature() {
         let signature = create_signature().unwrap();
         assert_eq!(signature.name().unwrap(), "GitOps Operator");
-        assert_eq!(signature.email().unwrap(), "gitops-operator+kainlite@gmail.com");
+        assert_eq!(signature.email().unwrap(), "kainlite+gitops@gmail.com");
     }
 
     #[test]
