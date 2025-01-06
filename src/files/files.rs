@@ -34,6 +34,7 @@ pub fn needs_patching(file_path: &str, new_sha: &str) -> Result<bool, Error> {
     return Ok(true);
 }
 
+#[tracing::instrument(name = "clone_or_update_repo", skip(), fields())]
 pub fn patch_deployment(file_path: &str, image_name: &str, new_sha: &str) -> Result<(), Error> {
     info!("Patching image tag in deployment file: {}", file_path);
     let mut deployment = get_deployment_from_file(file_path)?;

@@ -1,0 +1,29 @@
+services:
+  jaeger:
+    network_mode: "host"
+    image: jaegertracing/jaeger:${JAEGER_IMAGE_TAG:-latest}
+    volumes:
+      - "./files/config-spm.yaml:/etc/jaeger/config.yaml"
+    command: ["--config", "/etc/jaeger/config.yaml"]
+    ports:
+      - "16686:16686"
+      - "8888:8888"
+      - "8889:8889"
+      - "4317:4317"
+      - "4318:4318"
+
+  prometheus:
+    network_mode: "host"
+    image: prom/prometheus:v3.1.0
+    volumes:
+      - "./files/prometheus.yaml:/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+
+  grafana:
+    network_mode: "host"
+    image: grafana/grafana-oss
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+     - '3000:3000'

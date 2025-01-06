@@ -66,7 +66,7 @@ fn normal_merge(
     Ok(())
 }
 
-pub fn clone_or_update_repo(
+fn clone_or_update_repo(
     url: &str,
     repo_path: PathBuf,
     branch: &str,
@@ -187,6 +187,7 @@ fn pull_repo(repo: &Repository, branch: &str) -> Result<(), GitError> {
     }
 }
 
+#[tracing::instrument(name = "stage_and_push_changes", skip(repo, ssh_key), fields())]
 pub fn stage_and_push_changes(
     repo: &Repository,
     commit_message: &str,
@@ -254,6 +255,7 @@ pub fn stage_and_push_changes(
     remote.push(&[&refspec], Some(&mut push_options))
 }
 
+#[tracing::instrument(name = "clone_repo", skip(ssh_key), fields())]
 pub fn clone_repo(url: &str, local_path: &str, branch: &str, ssh_key: &str) {
     let repo_path = PathBuf::from(local_path);
 
@@ -263,6 +265,7 @@ pub fn clone_repo(url: &str, local_path: &str, branch: &str, ssh_key: &str) {
     }
 }
 
+#[tracing::instrument(name = "commit_changes", skip(ssh_key), fields())]
 pub fn commit_changes(manifest_repo_path: &str, ssh_key: &str) -> Result<(), GitError> {
     let commit_message = "chore(refs): gitops-operator updating image tags";
     let manifest_repo = Repository::open(&manifest_repo_path)?;
@@ -271,6 +274,7 @@ pub fn commit_changes(manifest_repo_path: &str, ssh_key: &str) -> Result<(), Git
     stage_and_push_changes(&manifest_repo, commit_message, ssh_key)
 }
 
+#[tracing::instrument(name = "get_latest_commit", skip(ssh_key), fields())]
 pub fn get_latest_commit(
     repo_path: &Path,
     branch: &str,

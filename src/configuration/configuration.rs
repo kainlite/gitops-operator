@@ -43,7 +43,7 @@ pub struct Entry {
     pub config: Config,
 }
 
-pub fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
+fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
     let name = d.name_any();
     let namespace = d.namespace()?;
     let annotations = d.metadata.annotations.as_ref()?;
@@ -145,6 +145,7 @@ async fn get_notifications_endpoint(operator_namespace: &str) -> Result<String, 
     String::from_utf8(bytes).context("Failed to convert key to string")
 }
 
+#[tracing::instrument(name = "process_deployment", skip(entry), fields())]
 pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
     info!("Processing: {}/{}", &entry.namespace, &entry.name);
     if !entry.config.enabled {
@@ -165,10 +166,12 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
     };
 
     // Perform reconciliation
+    info!("Performing reconciliation for: {}", &entry.name);
     let app_repo_path = format!("/tmp/app-{}-{}", &entry.name, &entry.config.observe_branch);
     let manifest_repo_path = format!("/tmp/manifest-{}-{}", &entry.name, &entry.config.observe_branch);
 
     // Create concurrent clone operations
+    info!("Cloning repositories for: {}", &entry.name);
     let app_clone = {
         let repo = entry.config.app_repository.clone();
         let path = app_repo_path.clone();
@@ -191,6 +194,7 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
     }
 
     // Find the latest remote head
+    info!("Getting latest commit for: {}", &entry.name);
     let new_sha = get_latest_commit(
         Path::new(&app_repo_path),
         &entry.config.observe_branch,
