@@ -24,7 +24,7 @@ tracing-subscriber = { version = "0.3.19", features = ["json", "env-filter"] }
 anyhow = "1.0.95"
 serde = { version = "1.0.216", features = ["derive"] }
 k8s-openapi = { version = "0.24.0", features = ["latest"] }
-git2 = "0.19.0"
+git2 = "0.20.0"
 serde_yaml = "0.9.34"
 base64 = "0.22.1"
 tracing-bunyan-formatter = "0.3.10"
