@@ -218,7 +218,7 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
             Err(e) => {
                 error!("Failed to patch deployment: {:?}", e);
 
-                if !entry.config.notifications && !endpoint.is_empty() {
+                if entry.config.notifications && !endpoint.is_empty() {
                     let message = format!(
                         "Failed to patch deployment: {} to version: {}",
                         &entry.name, &new_sha
@@ -244,7 +244,7 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
             }
         }
 
-        if !entry.config.notifications && !endpoint.is_empty() {
+        if entry.config.notifications && !endpoint.is_empty() {
             info!("Sending notification for: {}", &entry.name);
 
             let message = format!(
