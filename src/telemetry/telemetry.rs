@@ -15,7 +15,7 @@ use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
 
-fn resource() -> Resource {
+pub fn resource() -> Resource {
     Resource::from_schema_url(
         [
             KeyValue::new(SERVICE_NAME, env!("CARGO_PKG_NAME")),
@@ -71,6 +71,9 @@ pub fn get_subscriber(name: String, env_filter: String) -> impl Subscriber + Sen
 }
 
 pub fn init_subscriber(subscriber: impl Subscriber + Send + Sync) {
-    LogTracer::init().expect("Failed to set logger");
+    match LogTracer::init() {
+        Ok(_) => (),
+        Err(e) => eprintln!("Failed to set logger: {}", e),
+    };
     set_global_default(subscriber).expect("Failed to set subscriber");
 }

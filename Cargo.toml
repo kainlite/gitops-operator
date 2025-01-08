@@ -18,7 +18,7 @@ path = "src/lib.rs"
 axum = "0.7.9"
 tower-http = { version = "0.6.2", default-features = false, features = ["trace"] }
 futures = "0.3.31"
-tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "full"] }
+tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "full", "test-util"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["json", "env-filter"] }
 anyhow = "1.0.95"
@@ -31,7 +31,7 @@ tracing-bunyan-formatter = "0.3.10"
 tracing-log = "0.2.0"
 openssl = { version = '0.10', features = ["vendored"] }
 uuid = { version = "1.11.0", features = ["v4"] }
-reqwest = "0.12.12"
+reqwest = { version = "0.12.12", features = ["json"] }
 serde_json = "1.0.134"
 tracing-opentelemetry = "0.28.0"
 opentelemetry = "0.27.1"
@@ -45,7 +45,9 @@ version = "0.98.0"
 features = ["runtime"]
 
 [dev-dependencies]
-tokio-test = "0.4.3"
+mockito = "1.6.1"
+wiremock = "0.5"
+tokio = { version = "1.42.0", features = ["full", "test-util", "macros", "rt-multi-thread"] }
 mockall = "0.12.1"
 assert_matches = "1.5.0"
 tempfile = "3.8.1"

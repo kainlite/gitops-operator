@@ -11,7 +11,8 @@ pub async fn send(message: &str, endpoint: &str) -> Result<reqwest::Response, re
     client
         .post(endpoint)
         .header("Content-Type", "application/json")
-        .body(payload.to_string())
+        .json(&payload)
         .send()
         .await
 }
+
