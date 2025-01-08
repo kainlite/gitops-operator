@@ -154,8 +154,6 @@ dependencies = [
  "http 1.2.0",
  "http-body 1.0.1",
  "http-body-util",
- "hyper 1.5.2",
- "hyper-util",
  "itoa",
  "matchit 0.7.3",
  "memchr",
@@ -164,15 +162,10 @@ dependencies = [
  "pin-project-lite",
  "rustversion",
  "serde",
- "serde_json",
- "serde_path_to_error",
- "serde_urlencoded",
  "sync_wrapper",
- "tokio",
  "tower 0.5.2",
  "tower-layer",
  "tower-service",
- "tracing",
 ]
 
 [[package]]
@@ -227,7 +220,6 @@ dependencies = [
  "sync_wrapper",
  "tower-layer",
  "tower-service",
- "tracing",
 ]
 
 [[package]]
@@ -834,7 +826,7 @@ version = "0.6.3"
 dependencies = [
  "anyhow",
  "assert_matches",
- "axum 0.7.9",
+ "axum 0.8.1",
  "axum-prometheus",
  "base64 0.22.1",
  "futures",
