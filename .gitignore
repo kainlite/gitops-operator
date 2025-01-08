@@ -1,3 +1,7 @@
 target
 target/**
 id_rsa_demo
+id_rsa**
+tests/default_**
+*.html
+.git
