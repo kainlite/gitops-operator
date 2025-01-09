@@ -129,9 +129,9 @@ async fn get_ssh_key(ssh_key_name: &str, ssh_key_namespace: &str) -> Result<Stri
     String::from_utf8(key_bytes).context("Failed to convert key to string")
 }
 
-async fn get_notifications_endpoint(operator_namespace: &str) -> Result<String, Error> {
+async fn get_notifications_endpoint(namespace: &str) -> Result<String, Error> {
     let client = Client::try_default().await?;
-    let secrets: Api<Secret> = Api::namespaced(client, operator_namespace);
+    let secrets: Api<Secret> = Api::namespaced(client, namespace);
     let secret = secrets.get("webhook-secret").await?;
 
     let secret_data = secret.data.context("Failed to read the data section")?;

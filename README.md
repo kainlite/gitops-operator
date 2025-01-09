@@ -98,10 +98,10 @@ matter which hosting solution you prefer it should still work the very same way 
 authentication.
 
 ### Notifications
-In order to be able to send notifications (following the Slack format), you can create a secret like that (this is a
-global config):
+In order to be able to send notifications (following the Slack format), you can create a secret like that (You will need
+to create a secret per namespace, where you app is deployed):
 ```
-kubectl create secret generic webhook-secret  -n gitops-operator --from-literal=webhook-url=https://hooks.slack.com/services/...
+kubectl create secret generic webhook-secret  -n define_ns --from-literal=webhook-url=https://hooks.slack.com/services/...
 ```
 
 ### In-Cluster
