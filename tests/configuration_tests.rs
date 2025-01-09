@@ -379,8 +379,14 @@ mod tests {
         assert_eq!(entry1.version, "1.0.0");
         assert!(entry1.config.enabled);
         assert_eq!(entry1.config.app_repository, "https://github.com/org/app1");
-        assert_eq!(entry1.config.notifications_secret_name, "test-app1-notifications");
-        assert_eq!(entry1.config.notifications_secret_namespace, "default");
+        assert_eq!(
+            entry1.config.notifications_secret_name,
+            Some(String::from("test-app1-notifications"))
+        );
+        assert_eq!(
+            entry1.config.notifications_secret_namespace,
+            Some(String::from("default"))
+        );
 
         // Check second deployment (disabled)
         let entry2 = entries.iter().find(|e| e.name == "test-app2").unwrap();
@@ -389,8 +395,14 @@ mod tests {
         assert_eq!(entry2.version, "2.0.0");
         assert!(!entry2.config.enabled);
         assert_eq!(entry2.config.app_repository, "https://github.com/org/app2");
-        assert_eq!(entry2.config.notifications_secret_name, "test-app1-notifications");
-        assert_eq!(entry2.config.notifications_secret_namespace, "default");
+        assert_eq!(
+            entry2.config.notifications_secret_name,
+            Some(String::from("test-app1-notifications"))
+        );
+        assert_eq!(
+            entry2.config.notifications_secret_namespace,
+            Some(String::from("default"))
+        );
 
         // Verify the invalid deployment is not included
         assert!(entries.iter().find(|e| e.name == "test-app3").is_none());

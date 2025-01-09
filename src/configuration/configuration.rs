@@ -30,8 +30,8 @@ pub struct Config {
     pub tag_type: String,
     pub ssh_key_name: String,
     pub ssh_key_namespace: String,
-    pub notifications_secret_name: String,
-    pub notifications_secret_namespace: String,
+    pub notifications_secret_name: Option<String>,
+    pub notifications_secret_namespace: Option<String>,
 }
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
@@ -85,11 +85,12 @@ pub fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
     let ssh_key_namespace = annotations.get("gitops.operator.ssh_key_namespace")?.to_string();
 
     let notifications_secret_name = annotations
-        .get("gitops.operator.notifications_secret_name")?
-        .to_string();
+        .get("gitops.operator.notifications_secret_name")
+        .map(|name| name.to_string());
+
     let notifications_secret_namespace = annotations
-        .get("gitops.operator.notifications_secret_namespace")?
-        .to_string();
+        .get("gitops.operator.notifications_secret_namespace")
+        .map(|name| name.to_string());
 
     info!("Processing: {}/{}", &namespace, &name);
 
@@ -133,8 +134,14 @@ async fn get_ssh_key(ssh_key_name: &str, ssh_key_namespace: &str) -> Result<Stri
 }
 
 async fn get_notifications_endpoint(name: &str, namespace: &str) -> Result<String, Error> {
+    if name.is_empty() {
+        return Ok(String::new());
+    }
+
+    let ns = namespace.is_empty().then(|| "gitops-operator").unwrap_or(namespace);
+
     let client = Client::try_default().await?;
-    let secrets: Api<Secret> = Api::namespaced(client, namespace);
+    let secrets: Api<Secret> = Api::namespaced(client, ns);
     let secret = secrets.get(&name).await?;
 
     let secret_data = secret.data.context("Failed to read the data section")?;
@@ -156,11 +163,11 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
     }
 
     let endpoint = get_notifications_endpoint(
-        &entry.config.notifications_secret_name,
-        &entry.config.notifications_secret_namespace,
+        &entry.config.notifications_secret_name.unwrap_or_default(),
+        &entry.config.notifications_secret_namespace.unwrap_or_default(),
     )
     .await
-    .unwrap_or("".to_string());
+    .unwrap_or_default();
 
     let ssh_key_secret = match get_ssh_key(&entry.config.ssh_key_name, &entry.config.ssh_key_namespace).await
     {
