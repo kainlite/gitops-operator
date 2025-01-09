@@ -63,7 +63,14 @@ mod tests {
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
         );
-        annotations.insert("gitops.operator.notifications".to_string(), "true".to_string());
+        annotations.insert(
+            "gitops.operator.notifications_secret_name".to_string(),
+            "webhook-secret".to_string(),
+        );
+        annotations.insert(
+            "gitops.operator.notifications_secret_namespace".to_string(),
+            "myns".to_string(),
+        );
 
         let deployment =
             create_test_deployment("test-app", "default", "my-container:1.0.0", annotations.clone());
@@ -120,7 +127,14 @@ mod tests {
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
         );
-        annotations.insert("gitops.operator.notifications".to_string(), "false".to_string());
+        annotations.insert(
+            "gitops.operator.notifications_secret_name".to_string(),
+            "webhook-secret".to_string(),
+        );
+        annotations.insert(
+            "gitops.operator.notifications_secret_namespace".to_string(),
+            "myns".to_string(),
+        );
 
         let deployment = create_test_deployment("test-app", "default", "my-container", annotations);
 
@@ -237,7 +251,14 @@ mod tests {
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
         );
-        annotations.insert("gitops.operator.notifications".to_string(), "true".to_string());
+        annotations.insert(
+            "gitops.operator.notifications_secret_name".to_string(),
+            "webhook-secret".to_string(),
+        );
+        annotations.insert(
+            "gitops.operator.notifications_secret_namespace".to_string(),
+            "myns".to_string(),
+        );
 
         let deployment = create_test_deployment("test-app", "default", "my-container:1.0.0", annotations);
 
@@ -287,7 +308,14 @@ mod tests {
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
         );
-        annotations1.insert("gitops.operator.notifications".to_string(), "true".to_string());
+        annotations1.insert(
+            "gitops.operator.notifications_secret_name".to_string(),
+            "test-app1-notifications".to_string(),
+        );
+        annotations1.insert(
+            "gitops.operator.notifications_secret_namespace".to_string(),
+            "default".to_string(),
+        );
 
         let deployment1 = create_test_deployment("test-app1", "default", "container1:1.0.0", annotations1);
         store.apply_watcher_event(&Event::Apply(deployment1));
@@ -313,7 +341,14 @@ mod tests {
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
         );
-        annotations2.insert("gitops.operator.notifications".to_string(), "false".to_string());
+        annotations2.insert(
+            "gitops.operator.notifications_secret_name".to_string(),
+            "test-app1-notifications".to_string(),
+        );
+        annotations2.insert(
+            "gitops.operator.notifications_secret_namespace".to_string(),
+            "default".to_string(),
+        );
 
         let deployment2 = create_test_deployment("test-app2", "default", "container2:2.0.0", annotations2);
         store.apply_watcher_event(&Event::Apply(deployment2));
@@ -344,7 +379,14 @@ mod tests {
         assert_eq!(entry1.version, "1.0.0");
         assert!(entry1.config.enabled);
         assert_eq!(entry1.config.app_repository, "https://github.com/org/app1");
-        assert!(entry1.config.notifications);
+        assert_eq!(
+            entry1.config.notifications_secret_name,
+            Some(String::from("test-app1-notifications"))
+        );
+        assert_eq!(
+            entry1.config.notifications_secret_namespace,
+            Some(String::from("default"))
+        );
 
         // Check second deployment (disabled)
         let entry2 = entries.iter().find(|e| e.name == "test-app2").unwrap();
@@ -353,7 +395,14 @@ mod tests {
         assert_eq!(entry2.version, "2.0.0");
         assert!(!entry2.config.enabled);
         assert_eq!(entry2.config.app_repository, "https://github.com/org/app2");
-        assert!(!entry2.config.notifications);
+        assert_eq!(
+            entry2.config.notifications_secret_name,
+            Some(String::from("test-app1-notifications"))
+        );
+        assert_eq!(
+            entry2.config.notifications_secret_namespace,
+            Some(String::from("default"))
+        );
 
         // Verify the invalid deployment is not included
         assert!(entries.iter().find(|e| e.name == "test-app3").is_none());

@@ -30,7 +30,8 @@ pub struct Config {
     pub tag_type: String,
     pub ssh_key_name: String,
     pub ssh_key_namespace: String,
-    pub notifications: bool,
+    pub notifications_secret_name: Option<String>,
+    pub notifications_secret_namespace: Option<String>,
 }
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
@@ -83,11 +84,13 @@ pub fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
     let ssh_key_name = annotations.get("gitops.operator.ssh_key_name")?.to_string();
     let ssh_key_namespace = annotations.get("gitops.operator.ssh_key_namespace")?.to_string();
 
-    let notifications = annotations
-        .get("gitops.operator.notifications")?
-        .trim()
-        .parse()
-        .unwrap_or(false);
+    let notifications_secret_name = annotations
+        .get("gitops.operator.notifications_secret_name")
+        .map(|name| name.to_string());
+
+    let notifications_secret_namespace = annotations
+        .get("gitops.operator.notifications_secret_namespace")
+        .map(|name| name.to_string());
 
     info!("Processing: {}/{}", &namespace, &name);
 
@@ -108,7 +111,8 @@ pub fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
             tag_type,
             ssh_key_name,
             ssh_key_namespace,
-            notifications,
+            notifications_secret_name,
+            notifications_secret_namespace,
         },
     })
 }
@@ -129,16 +133,22 @@ async fn get_ssh_key(ssh_key_name: &str, ssh_key_namespace: &str) -> Result<Stri
     String::from_utf8(key_bytes).context("Failed to convert key to string")
 }
 
-async fn get_notifications_endpoint(namespace: &str) -> Result<String, Error> {
+async fn get_notifications_endpoint(name: &str, namespace: &str) -> Result<String, Error> {
+    if name.is_empty() {
+        return Ok(String::new());
+    }
+
+    let ns = namespace.is_empty().then(|| "gitops-operator").unwrap_or(namespace);
+
     let client = Client::try_default().await?;
-    let secrets: Api<Secret> = Api::namespaced(client, namespace);
-    let secret = secrets.get("webhook-secret").await?;
+    let secrets: Api<Secret> = Api::namespaced(client, ns);
+    let secret = secrets.get(&name).await?;
 
     let secret_data = secret.data.context("Failed to read the data section")?;
 
     let encoded_url = secret_data
         .get("webhook-url")
-        .context("Failed to read field: webhook-url in data, consider recreating the secret with kubectl create secret generic webhook-secret -n gitops-operator --from-literal=webhook-url=https://hooks.sl...")?;
+        .context("Failed to read field: webhook-url in data, consider recreating the secret with kubectl create secret generic webhook-secret-name -n your_namespace --from-literal=webhook-url=https://hooks.sl...")?;
 
     let bytes = encoded_url.0.clone();
 
@@ -152,9 +162,12 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
         warn!("Config is disabled for deployment: {}", &entry.name);
     }
 
-    let endpoint = get_notifications_endpoint(&entry.config.namespace)
-        .await
-        .unwrap_or("".to_string());
+    let endpoint = get_notifications_endpoint(
+        &entry.config.notifications_secret_name.unwrap_or_default(),
+        &entry.config.notifications_secret_namespace.unwrap_or_default(),
+    )
+    .await
+    .unwrap_or_default();
 
     let ssh_key_secret = match get_ssh_key(&entry.config.ssh_key_name, &entry.config.ssh_key_namespace).await
     {
@@ -218,7 +231,7 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
             Err(e) => {
                 let _ = remove_dir_all(&manifest_repo_path);
 
-                if entry.config.notifications {
+                if !endpoint.is_empty() {
                     let message = format!(
                         "Failed to patch deployment: {} to version: {}",
                         &entry.name, &new_sha
@@ -246,7 +259,7 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
             }
         }
 
-        if entry.config.notifications {
+        if !endpoint.is_empty() {
             let message = format!(
                 "Deployment {} has been patched successfully to version: {}",
                 &entry.name, &new_sha

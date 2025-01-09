@@ -62,7 +62,8 @@ metadata:
     gitops.operator.namespace: default
     gitops.operator.ssh_key_name: ssh-key
     gitops.operator.ssh_key_namespace: gitops-operator
-    gitops.operator.notifications: true
+    gitops.operator.notifications_secret_name: 'webhook-secret'
+    gitops.operator.notifications_secret_namespace: 'gitops-operator'
   labels:
     app: gitops-operator
   name: gitops-operator
@@ -82,7 +83,8 @@ A bit more information about the annotations:
     gitops.operator.namespace: # The namespace where this deployment is currently running
     gitops.operator.ssh_key_name: # The name of the secret containing the SSH key
     gitops.operator.ssh_key_namespace: # The namespace of the secret containing the SSH key
-    gitops.operator.notifications: # Wether to try to send a Slack notification to the provided endpoint via the secret
+    gitops.operator.notifications_secret_name: # OPTIONAL: Wether to try to send a Slack notification to the provided endpoint via the secret (the data field needs to be webhook-url)
+    gitops.operator.notifications_secret_namespace: # OPTIONAL: Wether to try to send a Slack notification to the provided endpoint via the secret (the data field needs to be webhook-url)
 ```
 
 ### SSH key secret

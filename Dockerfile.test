@@ -1,8 +1,7 @@
 FROM clux/muslrust:stable AS builder
 
-COPY . .
+COPY Cargo.* .
+COPY *.rs .
 
 RUN --mount=type=cache,target=/volume/target \
     --mount=type=cache,target=/root/.cargo/registry
-
-RUN cargo build
