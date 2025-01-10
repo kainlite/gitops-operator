@@ -133,7 +133,7 @@ async fn get_ssh_key(ssh_key_name: &str, ssh_key_namespace: &str) -> Result<Stri
     String::from_utf8(key_bytes).context("Failed to convert key to string")
 }
 
-async fn get_notifications_endpoint(name: &str, namespace: &str) -> Result<String, Error> {
+async fn get_notifications_secret(name: &str, namespace: &str) -> Result<String, Error> {
     if name.is_empty() {
         return Ok(String::new());
     }
@@ -155,6 +155,16 @@ async fn get_notifications_endpoint(name: &str, namespace: &str) -> Result<Strin
     String::from_utf8(bytes).context("Failed to convert key to string")
 }
 
+async fn get_notifications_endpoint(name: &str, namespace: &str) -> Option<String> {
+    match get_notifications_secret(name, namespace).await {
+        Ok(endpoint) => Some(endpoint),
+        Err(e) => {
+            warn!("Failed to get notifications secret: {:?}", e);
+            None
+        }
+    }
+}
+
 #[tracing::instrument(name = "process_deployment", skip(entry), fields())]
 pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
     info!("Processing: {}/{}", &entry.namespace, &entry.name);
@@ -166,8 +176,7 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
         &entry.config.notifications_secret_name.unwrap_or_default(),
         &entry.config.notifications_secret_namespace.unwrap_or_default(),
     )
-    .await
-    .unwrap_or_default();
+    .await;
 
     let ssh_key_secret = match get_ssh_key(&entry.config.ssh_key_name, &entry.config.ssh_key_namespace).await
     {
@@ -231,12 +240,12 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
             Err(e) => {
                 let _ = remove_dir_all(&manifest_repo_path);
 
-                if !endpoint.is_empty() {
+                if endpoint.is_some() {
                     let message = format!(
                         "Failed to patch deployment: {} to version: {}",
                         &entry.name, &new_sha
                     );
-                    match send_notification(&message, &endpoint).await {
+                    match send_notification(&message, endpoint.as_deref()).await {
                         Ok(_) => info!("Notification sent successfully"),
                         Err(e) => {
                             warn!("Failed to send notification: {:?}", e);
@@ -259,12 +268,12 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
             }
         }
 
-        if !endpoint.is_empty() {
+        if endpoint.is_some() {
             let message = format!(
                 "Deployment {} has been patched successfully to version: {}",
                 &entry.name, &new_sha
             );
-            match send_notification(&message, &endpoint).await {
+            match send_notification(&message, endpoint.as_deref()).await {
                 Ok(_) => info!("Notification sent successfully"),
                 Err(e) => {
                     warn!("Failed to send notification: {:?}", e);

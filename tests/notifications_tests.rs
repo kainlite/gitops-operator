@@ -24,7 +24,7 @@ mod tests {
             .await;
 
         // Call the function with mock server URL
-        let result = send("test message", &mock_server.uri()).await;
+        let result = send("test message", Some(&mock_server.uri())).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().status(), 200);
@@ -39,7 +39,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let result = send("test message", &mock_server.uri()).await;
+        let result = send("test message", Some(&mock_server.uri())).await;
 
         // The request itself succeeded
         assert!(result.is_ok());
@@ -49,7 +49,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_invalid_url() {
-        let result = send("test message", "http://invalid-url-that-does-not-exist.com").await;
+        let result = send("test message", None).await;
 
         assert!(result.is_err());
     }

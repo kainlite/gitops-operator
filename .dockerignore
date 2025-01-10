@@ -1,4 +1,4 @@
 target/
-tests/
+tests/default_*
 default_*
 tarpaulin*

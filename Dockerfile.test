@@ -1,7 +1,15 @@
-FROM clux/muslrust:stable AS builder
+FROM rust:1.83.0-slim
 
-COPY Cargo.* .
-COPY *.rs .
+COPY . .
 
-RUN --mount=type=cache,target=/volume/target \
-    --mount=type=cache,target=/root/.cargo/registry
+RUN apt-get update && apt-get install -y \
+    perl \
+    perl-modules \
+    pkg-config \
+    libssl-dev \
+    make \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . .

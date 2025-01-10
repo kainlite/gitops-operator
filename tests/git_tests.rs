@@ -30,7 +30,7 @@ mod tests {
             // Create initial commit on master branch
             fs::write(dir.path().join("README.md"), "# Test Repository").unwrap();
             Self::git_command(&["add", "."], &dir);
-            Self::git_command(&["commit", "-m", "Initial commit"], &dir);
+            Self::git_command(&["commit", "-m", "Initial commit", "-n"], &dir);
 
             // Ensure we're on master branch (some git versions might use 'main' by default)
             Self::git_command(&["checkout", "-b", "master"], &dir);
@@ -70,7 +70,7 @@ mod tests {
         fn add_and_commit_file(&self, filename: &str, content: &str, message: &str) {
             fs::write(self.dir.path().join(filename), content).unwrap();
             Self::git_command(&["add", filename], &self.dir);
-            Self::git_command(&["commit", "-m", message], &self.dir);
+            Self::git_command(&["commit", "-m", message, "-n"], &self.dir);
         }
     }
 
@@ -128,6 +128,8 @@ mod tests {
             "master",
             "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
         );
+
+        std::thread::sleep(Duration::from_millis(1));
 
         // Verify clone
         assert!(

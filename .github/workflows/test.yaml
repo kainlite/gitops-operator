@@ -25,8 +25,5 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Build test image
-        run: docker build -t rust-test -f Dockerfile.test .
-
-      - name: Run tests
-        run: docker run --rm rust-test cargo test
+      - name: run tests
+        run: docker run $(docker build -q -f Dockerfile.test .) cargo test
