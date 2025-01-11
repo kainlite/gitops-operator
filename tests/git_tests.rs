@@ -87,7 +87,11 @@ mod tests {
 
         // Verify we're on master branch before starting
         let head = test_repo.repo.head().unwrap();
-        assert_eq!(head.shorthand().unwrap(), "master", "Should be on master branch");
+        assert_eq!(
+            head.shorthand().unwrap(),
+            "master",
+            "Should be on master branch"
+        );
 
         // Create and add a new file
         test_repo.add_and_commit_file("test.txt", "test content", "Test commit");
@@ -141,7 +145,10 @@ mod tests {
             "Should clone repository content"
         );
         let content = fs::read_to_string(target_dir.path().join("test.txt")).unwrap();
-        assert_eq!(content, "test content", "Cloned content should match source");
+        assert_eq!(
+            content, "test content",
+            "Cloned content should match source"
+        );
         fs::remove_dir_all(&target_dir.path()).unwrap();
     }
 
@@ -184,7 +191,10 @@ mod tests {
             "Should update with new content"
         );
         let content = fs::read_to_string(target_dir.path().join("new.txt")).unwrap();
-        assert_eq!(content, "new content", "Updated content should match source");
+        assert_eq!(
+            content, "new content",
+            "Updated content should match source"
+        );
         fs::remove_dir_all(&target_dir.path()).unwrap();
     }
 
@@ -209,7 +219,10 @@ mod tests {
         let repo = Repository::init(&repo_path).unwrap();
 
         // Add user name and email
-        repo.config().unwrap().set_str("user.name", "Test User").unwrap();
+        repo.config()
+            .unwrap()
+            .set_str("user.name", "Test User")
+            .unwrap();
         repo.config()
             .unwrap()
             .set_str("user.email", "test_username@test.com")

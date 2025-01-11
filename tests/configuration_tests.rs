@@ -32,7 +32,10 @@ mod tests {
             },
             spec: Some(DeploymentSpec {
                 template: PodTemplateSpec {
-                    spec: Some(PodSpec { containers: vec![container], ..PodSpec::default() }),
+                    spec: Some(PodSpec {
+                        containers: vec![container],
+                        ..PodSpec::default()
+                    }),
                     ..PodTemplateSpec::default()
                 },
                 ..DeploymentSpec::default()
@@ -53,12 +56,18 @@ mod tests {
             "gitops.operator.manifest_repository".to_string(),
             "https://github.com/org/manifests".to_string(),
         );
-        annotations.insert("gitops.operator.image_name".to_string(), "my-app".to_string());
+        annotations.insert(
+            "gitops.operator.image_name".to_string(),
+            "my-app".to_string(),
+        );
         annotations.insert(
             "gitops.operator.deployment_path".to_string(),
             "deployments/app.yaml".to_string(),
         );
-        annotations.insert("gitops.operator.ssh_key_name".to_string(), "ssh-key".to_string());
+        annotations.insert(
+            "gitops.operator.ssh_key_name".to_string(),
+            "ssh-key".to_string(),
+        );
         annotations.insert(
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
@@ -72,8 +81,12 @@ mod tests {
             "myns".to_string(),
         );
 
-        let deployment =
-            create_test_deployment("test-app", "default", "my-container:1.0.0", annotations.clone());
+        let deployment = create_test_deployment(
+            "test-app",
+            "default",
+            "my-container:1.0.0",
+            annotations.clone(),
+        );
 
         let entry = deployment_to_entry(&deployment);
         assert!(entry.is_some());
@@ -99,7 +112,8 @@ mod tests {
 
     #[test]
     fn test_deployment_to_entry_missing_annotations() {
-        let deployment = create_test_deployment("test-app", "default", "my-container:1.0.0", BTreeMap::new());
+        let deployment =
+            create_test_deployment("test-app", "default", "my-container:1.0.0", BTreeMap::new());
 
         let entry = deployment_to_entry(&deployment);
         assert!(entry.is_none());
@@ -117,12 +131,18 @@ mod tests {
             "gitops.operator.manifest_repository".to_string(),
             "https://github.com/org/manifests".to_string(),
         );
-        annotations.insert("gitops.operator.image_name".to_string(), "my-app".to_string());
+        annotations.insert(
+            "gitops.operator.image_name".to_string(),
+            "my-app".to_string(),
+        );
         annotations.insert(
             "gitops.operator.deployment_path".to_string(),
             "deployments/app.yaml".to_string(),
         );
-        annotations.insert("gitops.operator.ssh_key_name".to_string(), "ssh-key".to_string());
+        annotations.insert(
+            "gitops.operator.ssh_key_name".to_string(),
+            "ssh-key".to_string(),
+        );
         annotations.insert(
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
@@ -154,7 +174,8 @@ mod tests {
             "https://github.com/org/app".to_string(),
         );
 
-        let deployment = create_test_deployment("test-app", "default", "my-container:1.0.0", annotations);
+        let deployment =
+            create_test_deployment("test-app", "default", "my-container:1.0.0", annotations);
 
         let entry = deployment_to_entry(&deployment);
         assert!(entry.is_none());
@@ -241,12 +262,18 @@ mod tests {
             "gitops.operator.manifest_repository".to_string(),
             "https://github.com/org/manifests".to_string(),
         );
-        annotations.insert("gitops.operator.image_name".to_string(), "my-app".to_string());
+        annotations.insert(
+            "gitops.operator.image_name".to_string(),
+            "my-app".to_string(),
+        );
         annotations.insert(
             "gitops.operator.deployment_path".to_string(),
             "deployments/app.yaml".to_string(),
         );
-        annotations.insert("gitops.operator.ssh_key_name".to_string(), "ssh-key".to_string());
+        annotations.insert(
+            "gitops.operator.ssh_key_name".to_string(),
+            "ssh-key".to_string(),
+        );
         annotations.insert(
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
@@ -260,7 +287,8 @@ mod tests {
             "myns".to_string(),
         );
 
-        let deployment = create_test_deployment("test-app", "default", "my-container:1.0.0", annotations);
+        let deployment =
+            create_test_deployment("test-app", "default", "my-container:1.0.0", annotations);
 
         // Use Event::Modified instead of Event::Applied
         let event = Event::Apply(deployment);
@@ -303,7 +331,10 @@ mod tests {
             "gitops.operator.deployment_path".to_string(),
             "deployments/app1.yaml".to_string(),
         );
-        annotations1.insert("gitops.operator.ssh_key_name".to_string(), "ssh-key".to_string());
+        annotations1.insert(
+            "gitops.operator.ssh_key_name".to_string(),
+            "ssh-key".to_string(),
+        );
         annotations1.insert(
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
@@ -317,7 +348,8 @@ mod tests {
             "default".to_string(),
         );
 
-        let deployment1 = create_test_deployment("test-app1", "default", "container1:1.0.0", annotations1);
+        let deployment1 =
+            create_test_deployment("test-app1", "default", "container1:1.0.0", annotations1);
         store.apply_watcher_event(&Event::Apply(deployment1));
 
         // Add a disabled deployment
@@ -336,7 +368,10 @@ mod tests {
             "gitops.operator.deployment_path".to_string(),
             "deployments/app2.yaml".to_string(),
         );
-        annotations2.insert("gitops.operator.ssh_key_name".to_string(), "ssh-key".to_string());
+        annotations2.insert(
+            "gitops.operator.ssh_key_name".to_string(),
+            "ssh-key".to_string(),
+        );
         annotations2.insert(
             "gitops.operator.ssh_key_namespace".to_string(),
             "myns".to_string(),
@@ -350,7 +385,8 @@ mod tests {
             "default".to_string(),
         );
 
-        let deployment2 = create_test_deployment("test-app2", "default", "container2:2.0.0", annotations2);
+        let deployment2 =
+            create_test_deployment("test-app2", "default", "container2:2.0.0", annotations2);
         store.apply_watcher_event(&Event::Apply(deployment2));
 
         // Add a deployment with missing required annotations
@@ -358,7 +394,8 @@ mod tests {
         annotations3.insert("gitops.operator.enabled".to_string(), "true".to_string());
         // Missing other required annotations
 
-        let deployment3 = create_test_deployment("test-app3", "default", "container3:3.0.0", annotations3);
+        let deployment3 =
+            create_test_deployment("test-app3", "default", "container3:3.0.0", annotations3);
         store.apply_watcher_event(&Event::Apply(deployment3));
 
         // Create the store reader
@@ -428,7 +465,8 @@ mod tests {
             "https://github.com/org/app".to_string(),
         );
 
-        let deployment = create_test_deployment("test-app", "default", "my-container:1.0.0", annotations);
+        let deployment =
+            create_test_deployment("test-app", "default", "my-container:1.0.0", annotations);
 
         let entry = deployment_to_entry(&deployment);
         assert!(entry.is_none());

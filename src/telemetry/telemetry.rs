@@ -27,7 +27,8 @@ pub fn resource() -> Resource {
 
 // TODO: split this function and add more tests
 pub fn get_subscriber(name: String, env_filter: String) -> impl Subscriber + Send + Sync {
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(env_filter));
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(env_filter));
     let formatting_layer = BunyanFormattingLayer::new(name, std::io::stdout);
 
     let exporter = opentelemetry_otlp::SpanExporter::builder()

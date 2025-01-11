@@ -7,10 +7,11 @@ use std::fs;
 use tracing::{info, warn};
 
 fn get_deployment_from_file(file_path: &str) -> Result<Deployment, Error> {
-    let yaml_content = fs::read_to_string(&file_path).context("Failed to read deployment YAML file")?;
+    let yaml_content =
+        fs::read_to_string(&file_path).context("Failed to read deployment YAML file")?;
 
-    let deployment: Deployment =
-        serde_yaml::from_str(&yaml_content).context("Failed to parse YAML into Kubernetes Deployment")?;
+    let deployment: Deployment = serde_yaml::from_str(&yaml_content)
+        .context("Failed to parse YAML into Kubernetes Deployment")?;
 
     Ok(deployment)
 }
@@ -44,7 +45,10 @@ pub fn patch_deployment(file_path: &str, image_name: &str, new_sha: &str) -> Res
             for container in &mut template.containers {
                 if container.image.as_ref().unwrap().contains(&new_sha) {
                     warn!("Image tag already updated... Aborting mission!");
-                    return Err(anyhow::anyhow!("Image tag {} is already up to date", new_sha));
+                    return Err(anyhow::anyhow!(
+                        "Image tag {} is already up to date",
+                        new_sha
+                    ));
                 }
                 if container.image.as_ref().unwrap().contains(&image_name) {
                     container.image = Some(format!("{}:{}", &image_name, &new_sha));

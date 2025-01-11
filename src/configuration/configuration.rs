@@ -62,10 +62,16 @@ pub fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
         .trim()
         .parse()
         .unwrap_or(false);
-    let app_repository = annotations.get("gitops.operator.app_repository")?.to_string();
-    let manifest_repository = annotations.get("gitops.operator.manifest_repository")?.to_string();
+    let app_repository = annotations
+        .get("gitops.operator.app_repository")?
+        .to_string();
+    let manifest_repository = annotations
+        .get("gitops.operator.manifest_repository")?
+        .to_string();
     let image_name = annotations.get("gitops.operator.image_name")?.to_string();
-    let deployment_path = annotations.get("gitops.operator.deployment_path")?.to_string();
+    let deployment_path = annotations
+        .get("gitops.operator.deployment_path")?
+        .to_string();
     let observe_branch = annotations
         .get("gitops.operator.observe_branch")
         .unwrap_or(&"master".to_string())
@@ -82,7 +88,9 @@ pub fn deployment_to_entry(d: &Deployment) -> Option<Entry> {
     .to_string();
 
     let ssh_key_name = annotations.get("gitops.operator.ssh_key_name")?.to_string();
-    let ssh_key_namespace = annotations.get("gitops.operator.ssh_key_namespace")?.to_string();
+    let ssh_key_namespace = annotations
+        .get("gitops.operator.ssh_key_namespace")?
+        .to_string();
 
     let notifications_secret_name = annotations
         .get("gitops.operator.notifications_secret_name")
@@ -138,7 +146,10 @@ async fn get_notifications_secret(name: &str, namespace: &str) -> Result<String,
         return Ok(String::new());
     }
 
-    let ns = namespace.is_empty().then(|| "gitops-operator").unwrap_or(namespace);
+    let ns = namespace
+        .is_empty()
+        .then(|| "gitops-operator")
+        .unwrap_or(namespace);
 
     let client = Client::try_default().await?;
     let secrets: Api<Secret> = Api::namespaced(client, ns);
@@ -174,23 +185,29 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
 
     let endpoint = get_notifications_endpoint(
         &entry.config.notifications_secret_name.unwrap_or_default(),
-        &entry.config.notifications_secret_namespace.unwrap_or_default(),
+        &entry
+            .config
+            .notifications_secret_namespace
+            .unwrap_or_default(),
     )
     .await;
 
-    let ssh_key_secret = match get_ssh_key(&entry.config.ssh_key_name, &entry.config.ssh_key_namespace).await
-    {
-        Ok(key) => key,
-        Err(e) => {
-            error!("Failed to get SSH key: {:?}", e);
-            return Err("Failed to get SSH key");
-        }
-    };
+    let ssh_key_secret =
+        match get_ssh_key(&entry.config.ssh_key_name, &entry.config.ssh_key_namespace).await {
+            Ok(key) => key,
+            Err(e) => {
+                error!("Failed to get SSH key: {:?}", e);
+                return Err("Failed to get SSH key");
+            }
+        };
 
     // Start process
     info!("Performing reconciliation for: {}", &entry.name);
     let app_repo_path = format!("/tmp/app-{}-{}", &entry.name, &entry.config.observe_branch);
-    let manifest_repo_path = format!("/tmp/manifest-{}-{}", &entry.name, &entry.config.observe_branch);
+    let manifest_repo_path = format!(
+        "/tmp/manifest-{}-{}",
+        &entry.name, &entry.config.observe_branch
+    );
 
     // Create concurrent clone operations
     info!("Cloning repositories for: {}", &entry.name);
@@ -292,7 +309,11 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
 pub async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
     tracing::info!("Starting reconciliation");
 
-    let data: Vec<_> = store.state().iter().filter_map(|d| deployment_to_entry(d)).collect();
+    let data: Vec<_> = store
+        .state()
+        .iter()
+        .filter_map(|d| deployment_to_entry(d))
+        .collect();
     let mut handles: Vec<_> = vec![];
 
     for entry in &data {

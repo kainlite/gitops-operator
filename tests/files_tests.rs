@@ -88,7 +88,10 @@ spec:
 
         let result = patch_deployment(file_path.to_str().unwrap(), "test-image", "new-sha");
 
-        assert!(result.is_err(), "Patch should fail when image is already updated");
+        assert!(
+            result.is_err(),
+            "Patch should fail when image is already updated"
+        );
     }
 
     #[test]

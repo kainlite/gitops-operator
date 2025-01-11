@@ -44,7 +44,9 @@ mod tests {
         .await
         {
             Ok(_) => (),
-            Err(_) => eprintln!("Warning: Cleanup timeout - some resources might not be properly released"),
+            Err(_) => eprintln!(
+                "Warning: Cleanup timeout - some resources might not be properly released"
+            ),
         }
     }
 

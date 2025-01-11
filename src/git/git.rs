@@ -1,5 +1,7 @@
 use git2::Signature;
-use git2::{build::RepoBuilder, Cred, Error as GitError, FetchOptions, RemoteCallbacks, Repository};
+use git2::{
+    build::RepoBuilder, Cred, Error as GitError, FetchOptions, RemoteCallbacks, Repository,
+};
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -24,7 +26,10 @@ pub fn create_signature<'a>() -> Result<Signature<'a>, GitError> {
     let email = "kainlite+gitops@gmail.com";
 
     // Get current timestamp
-    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
 
     // Create signature with current timestamp
     Signature::new(name, email, &git2::Time::new(time as i64, 0))
@@ -37,7 +42,9 @@ fn normal_merge(
 ) -> Result<(), git2::Error> {
     let local_tree = repo.find_commit(local.id())?.tree()?;
     let remote_tree = repo.find_commit(remote.id())?.tree()?;
-    let ancestor = repo.find_commit(repo.merge_base(local.id(), remote.id())?)?.tree()?;
+    let ancestor = repo
+        .find_commit(repo.merge_base(local.id(), remote.id())?)?
+        .tree()?;
     let mut idx = repo.merge_trees(&ancestor, &local_tree, &remote_tree, None)?;
 
     if idx.has_conflicts() {
@@ -83,7 +90,10 @@ pub fn clone_or_update_repo(
 
     // Check if repository already exists
     if repo_path.exists() {
-        info!("Repository already exists ({}), pulling...", &repo_path.display());
+        info!(
+            "Repository already exists ({}), pulling...",
+            &repo_path.display()
+        );
 
         // Open existing repository
         let repo = Repository::open(&repo_path)?;
@@ -95,7 +105,10 @@ pub fn clone_or_update_repo(
         // Pull changes (merge)
         return Ok(repo);
     } else {
-        info!("Repository does not exist, cloning: {}", &repo_path.display());
+        info!(
+            "Repository does not exist, cloning: {}",
+            &repo_path.display()
+        );
 
         // Clone new repository
         return clone_new_repo(url, &repo_path, fetch_options);
@@ -117,7 +130,10 @@ fn fetch_existing_repo(
     let mut remote = repo.find_remote("origin")?;
 
     // Fetch all branches
-    let refs = &[format!("refs/heads/{}:refs/remotes/origin/{}", branch, branch)];
+    let refs = &[format!(
+        "refs/heads/{}:refs/remotes/origin/{}",
+        branch, branch
+    )];
 
     remote.fetch(refs, Some(fetch_options), None)?;
 
@@ -125,7 +141,11 @@ fn fetch_existing_repo(
 }
 
 /// Clone a new repository
-fn clone_new_repo(url: &str, local_path: &Path, fetch_options: FetchOptions) -> Result<Repository, GitError> {
+fn clone_new_repo(
+    url: &str,
+    local_path: &Path,
+    fetch_options: FetchOptions,
+) -> Result<Repository, GitError> {
     info!("Cloning repository from: {}", &url);
     // Prepare repository builder
     let mut repo_builder = RepoBuilder::new();
@@ -192,7 +212,10 @@ pub fn stage_and_push_changes(
     commit_message: &str,
     ssh_key: &str,
 ) -> Result<(), GitError> {
-    info!("Staging and pushing changes for: {}", &repo.path().display());
+    info!(
+        "Staging and pushing changes for: {}",
+        &repo.path().display()
+    );
 
     // Stage all changes (equivalent to git add .)
     let mut index = repo.index()?;
