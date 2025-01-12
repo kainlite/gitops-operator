@@ -179,9 +179,6 @@ async fn get_notifications_endpoint(name: &str, namespace: &str) -> Option<Strin
 #[tracing::instrument(name = "process_deployment", skip(entry), fields())]
 pub async fn process_deployment(entry: Entry) -> Result<(), String> {
     info!("Processing: {}/{}", &entry.namespace, &entry.name);
-    if !entry.config.enabled {
-        warn!("Config is disabled for deployment: {}", &entry.name);
-    }
 
     let endpoint = get_notifications_endpoint(
         &entry.config.notifications_secret_name.unwrap_or_default(),
@@ -319,6 +316,8 @@ pub async fn reconcile(State(store): State<Cache>) -> Json<Vec<String>> {
         .iter()
         .filter_map(|d| deployment_to_entry(d))
         .collect();
+
+    println!("{:?}", data);
     let mut handles: Vec<_> = vec![];
 
     for entry in &data {

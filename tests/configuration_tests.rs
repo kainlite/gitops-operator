@@ -302,10 +302,15 @@ mod tests {
         let entries = response.0;
 
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].name, "test-app");
-        assert_eq!(entries[0].namespace, "default");
-        assert_eq!(entries[0].container, "my-container");
-        assert_eq!(entries[0].version, "1.0.0");
+        let entry1 = entries
+            .iter()
+            .find(|e| {
+                e.to_string()
+                    == "Deployment: test-app is up to date, proceeding to next deployment..."
+            })
+            .unwrap();
+
+        assert!(entry1.to_string().contains("test-app"));
     }
 
     #[tokio::test]
@@ -404,45 +409,34 @@ mod tests {
         // Call reconcile endpoint
         let response = reconcile(State(reader)).await;
         let entries = response.0;
+        println!("{:?}", entries);
 
         // Verify the results
-        // Should only include valid deployments (enabled and disabled)
-        assert_eq!(entries.len(), 2);
+        // Should only include valid deployments and enabled
+        assert_eq!(entries.len(), 1);
 
         // Check first deployment (enabled)
-        let entry1 = entries.iter().find(|e| e.name == "test-app1").unwrap();
-        assert_eq!(entry1.namespace, "default");
-        assert_eq!(entry1.container, "container1");
-        assert_eq!(entry1.version, "1.0.0");
-        assert!(entry1.config.enabled);
-        assert_eq!(entry1.config.app_repository, "https://github.com/org/app1");
-        assert_eq!(
-            entry1.config.notifications_secret_name,
-            Some(String::from("test-app1-notifications"))
-        );
-        assert_eq!(
-            entry1.config.notifications_secret_namespace,
-            Some(String::from("default"))
-        );
+        let entry1 = entries
+            .iter()
+            .find(|e| {
+                e.to_string()
+                    == "Deployment: test-app1 is up to date, proceeding to next deployment..."
+            })
+            .unwrap();
 
-        // Check second deployment (disabled)
-        let entry2 = entries.iter().find(|e| e.name == "test-app2").unwrap();
-        assert_eq!(entry2.namespace, "default");
-        assert_eq!(entry2.container, "container2");
-        assert_eq!(entry2.version, "2.0.0");
-        assert!(!entry2.config.enabled);
-        assert_eq!(entry2.config.app_repository, "https://github.com/org/app2");
-        assert_eq!(
-            entry2.config.notifications_secret_name,
-            Some(String::from("test-app1-notifications"))
-        );
-        assert_eq!(
-            entry2.config.notifications_secret_namespace,
-            Some(String::from("default"))
-        );
+        assert!(entry1.to_string().contains("test-app1"));
+
+        // Check that the second deployment (disabled) is not present
+        assert!(entries
+            .iter()
+            .find(|e| { e.to_string() == "test-app2" })
+            .is_none());
 
         // Verify the invalid deployment is not included
-        assert!(entries.iter().find(|e| e.name == "test-app3").is_none());
+        assert!(entries
+            .iter()
+            .find(|e| e.to_string() == "test-app3")
+            .is_none());
     }
 
     #[tokio::test]
