@@ -177,7 +177,7 @@ async fn get_notifications_endpoint(name: &str, namespace: &str) -> Option<Strin
 }
 
 #[tracing::instrument(name = "process_deployment", skip(entry), fields())]
-pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
+pub async fn process_deployment(entry: Entry) -> Result<(), String> {
     info!("Processing: {}/{}", &entry.namespace, &entry.name);
     if !entry.config.enabled {
         warn!("Config is disabled for deployment: {}", &entry.name);
@@ -197,7 +197,7 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
             Ok(key) => key,
             Err(e) => {
                 error!("Failed to get SSH key: {:?}", e);
-                return Err("Failed to get SSH key");
+                return Err("Failed to get SSH key".to_string());
             }
         };
 
@@ -301,12 +301,17 @@ pub async fn process_deployment(entry: Entry) -> Result<(), &'static str> {
         info!("Deployment patched successfully: {}", &entry.name);
         Ok(())
     } else {
-        info!("Deployment is up to date, proceeding to next deployment...");
-        Err("Deployment is up to date, proceeding to next deployment...")
+        let message = format!(
+            "Deployment: {} is up to date, proceeding to next deployment...",
+            &entry.name
+        );
+
+        info!(message);
+        Err(message)
     }
 }
 
-pub async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
+pub async fn reconcile(State(store): State<Cache>) -> Json<Vec<String>> {
     tracing::info!("Starting reconciliation");
 
     let data: Vec<_> = store
@@ -327,7 +332,7 @@ pub async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
         handles.push(deployment);
     }
 
-    let _ = future::join_all(handles).await;
+    let results = future::join_all(handles).await;
 
-    Json(data)
+    Json(results.iter().map(|r| r.clone().unwrap_err()).collect())
 }

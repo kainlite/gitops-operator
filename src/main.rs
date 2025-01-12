@@ -4,7 +4,7 @@ use axum::routing::get;
 use axum::{routing, Json, Router};
 use axum_prometheus::PrometheusMetricLayer;
 use futures::{future, StreamExt};
-use gitops_operator::configuration::{reconcile as config_reconcile, Entry};
+use gitops_operator::configuration::reconcile as config_reconcile;
 use gitops_operator::telemetry::{get_subscriber, init_subscriber};
 use k8s_openapi::api::apps::v1::Deployment;
 use kube::runtime::{reflector, watcher, WatchStreamExt};
@@ -24,8 +24,8 @@ type Cache = reflector::Store<Deployment>;
         request_id = %Uuid::new_v4(),
     )
 )]
-async fn reconcile(State(store): State<Cache>) -> Json<Vec<Entry>> {
-    config_reconcile(State(store)).await.into()
+async fn reconcile(State(store): State<Cache>) -> Json<Vec<String>> {
+    config_reconcile(State(store)).await
 }
 
 #[instrument]
