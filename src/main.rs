@@ -4,7 +4,7 @@ use axum::routing::get;
 use axum::{routing, Json, Router};
 use axum_prometheus::PrometheusMetricLayer;
 use futures::{future, StreamExt};
-use gitops_operator::configuration::reconcile as config_reconcile;
+use gitops_operator::configuration::{deployment_to_entry, reconcile as config_reconcile, Entry};
 use gitops_operator::telemetry::{get_subscriber, init_subscriber};
 use k8s_openapi::api::apps::v1::Deployment;
 use kube::runtime::{reflector, watcher, WatchStreamExt};
@@ -26,6 +26,18 @@ type Cache = reflector::Store<Deployment>;
 )]
 async fn reconcile(State(store): State<Cache>) -> Json<Vec<String>> {
     config_reconcile(State(store)).await
+}
+
+// - GET /debug
+#[tracing::instrument(name = "debug", skip(store), fields())]
+async fn debug(State(store): State<Cache>) -> Json<Vec<Entry>> {
+    let data: Vec<Entry> = store
+        .state()
+        .iter()
+        .filter_map(|d| deployment_to_entry(d))
+        .collect();
+
+    Json(data)
 }
 
 #[instrument]
@@ -54,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
     let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
     let app = Router::new()
         .route("/health", routing::get(|| async { "up" }))
+        .route("/debug", routing::get(debug))
         .route("/reconcile", routing::get(reconcile))
         .with_state(reader)
         .layer(

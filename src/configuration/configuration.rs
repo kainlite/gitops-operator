@@ -41,6 +41,7 @@ pub struct Entry {
     pub namespace: String,
     pub annotations: BTreeMap<String, String>,
     pub version: String,
+    #[serde(default)]
     pub config: Config,
 }
 
@@ -317,7 +318,6 @@ pub async fn reconcile(State(store): State<Cache>) -> Json<Vec<String>> {
         .filter_map(|d| deployment_to_entry(d))
         .collect();
 
-    println!("{:?}", data);
     let mut handles: Vec<_> = vec![];
 
     for entry in &data {
