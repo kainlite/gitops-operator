@@ -243,7 +243,7 @@ pub async fn process_deployment(entry: Entry) -> Result<(), String> {
         Ok(sha) => sha,
         Err(e) => {
             error!("Failed to get latest SHA: {:?}", e);
-            "latest".to_string()
+            return Err("Failed to get latest SHA".to_string());
         }
     };
 
