@@ -333,5 +333,13 @@ pub async fn reconcile(State(store): State<Cache>) -> Json<Vec<String>> {
 
     let results = future::join_all(handles).await;
 
-    Json(results.iter().map(|r| r.clone().unwrap_err()).collect())
+    Json(
+        results
+            .iter()
+            .map(|r| match r.clone() {
+                Ok(_) => "Deployment patched successfully".to_string(),
+                Err(e) => e,
+            })
+            .collect(),
+    )
 }
