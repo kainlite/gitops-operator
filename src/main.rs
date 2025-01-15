@@ -4,7 +4,7 @@ use axum::routing::get;
 use axum::{routing, Json, Router};
 use axum_prometheus::PrometheusMetricLayer;
 use futures::{future, StreamExt};
-use gitops_operator::configuration::{deployment_to_entry, reconcile as config_reconcile, Entry};
+use gitops_operator::configuration::{Entry, State as ConfigState};
 use gitops_operator::telemetry::{get_subscriber, init_subscriber};
 use k8s_openapi::api::apps::v1::Deployment;
 use kube::runtime::{reflector, watcher, WatchStreamExt};
@@ -24,18 +24,14 @@ type Cache = reflector::Store<Deployment>;
         request_id = %Uuid::new_v4(),
     )
 )]
-async fn reconcile(State(store): State<Cache>) -> Json<Vec<String>> {
-    config_reconcile(State(store)).await
+async fn reconcile(State(store): State<Cache>) -> Json<Vec<ConfigState>> {
+    Entry::reconcile(State(store)).await
 }
 
 // - GET /debug
 #[tracing::instrument(name = "debug", skip(store), fields())]
 async fn debug(State(store): State<Cache>) -> Json<Vec<Entry>> {
-    let data: Vec<Entry> = store
-        .state()
-        .iter()
-        .filter_map(|d| deployment_to_entry(d))
-        .collect();
+    let data: Vec<Entry> = store.state().iter().filter_map(|d| Entry::new(d)).collect();
 
     Json(data)
 }
@@ -56,10 +52,11 @@ async fn main() -> anyhow::Result<()> {
         .default_backoff()
         .touched_objects()
         .for_each(|r| {
-            future::ready(match r {
+            match r {
                 Ok(o) => debug!("Saw {} in {}", o.name_any(), o.namespace().unwrap()),
                 Err(e) => warn!("watcher error: {e}"),
-            })
+            };
+            future::ready(())
         });
     tokio::spawn(watch); // poll forever
 

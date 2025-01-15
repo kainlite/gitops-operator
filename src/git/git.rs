@@ -1,10 +1,9 @@
-use git2::Signature;
+use crate::git::utils::create_signature;
 use git2::{
     build::RepoBuilder, Cred, Error as GitError, FetchOptions, RemoteCallbacks, Repository,
 };
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use tracing::{debug, error, info, warn};
 
@@ -19,20 +18,6 @@ impl<'a> DefaultCallbacks<'a> for RemoteCallbacks<'a> {
         });
         self
     }
-}
-
-pub fn create_signature<'a>() -> Result<Signature<'a>, GitError> {
-    let name = "GitOps Operator";
-    let email = "kainlite+gitops@gmail.com";
-
-    // Get current timestamp
-    let time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    // Create signature with current timestamp
-    Signature::new(name, email, &git2::Time::new(time as i64, 0))
 }
 
 fn normal_merge(
@@ -103,7 +88,7 @@ pub fn clone_or_update_repo(
         pull_repo(&repo, branch)?;
 
         // Pull changes (merge)
-        return Ok(repo);
+        Ok(repo)
     } else {
         info!(
             "Repository does not exist, cloning: {}",
@@ -111,7 +96,7 @@ pub fn clone_or_update_repo(
         );
 
         // Clone new repository
-        return clone_new_repo(url, &repo_path, fetch_options);
+        clone_new_repo(url, &repo_path, fetch_options)
     }
 }
 
@@ -186,16 +171,16 @@ fn pull_repo(repo: &Repository, branch: &str) -> Result<(), GitError> {
     );
 
     if merge_analysis.is_fast_forward() {
-        let refname = format!("refs/remotes/origin/master");
-        let mut reference = repo.find_reference(&refname)?;
+        let refname = "refs/remotes/origin/master";
+        let mut reference = repo.find_reference(refname)?;
         reference.set_target(fetch_commit.id(), "Fast-Forward")?;
-        repo.set_head(&refname)?;
-        let _ = repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+        repo.set_head(refname)?;
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
 
         Ok(())
     } else if merge_analysis.is_normal() {
         let head_commit = repo.reference_to_annotated_commit(&repo.head()?)?;
-        normal_merge(&repo, &head_commit, &fetch_commit)?;
+        normal_merge(repo, &head_commit, &fetch_commit)?;
 
         Ok(())
     } else if merge_analysis.is_up_to_date() {
@@ -238,7 +223,6 @@ pub fn stage_and_push_changes(
     info!("Parent commit: {}", parent_commit.id());
 
     // Prepare signature (author and committer)
-    // let signature = repo.signature()?;
     let signature = create_signature()?;
 
     info!("Author: {}", signature.name().unwrap());
@@ -269,7 +253,7 @@ pub fn stage_and_push_changes(
     info!("Pushing to remote: {}", remote.url().unwrap());
 
     // We are only watching the master branch at the moment
-    let refspec = format!("refs/heads/master");
+    let refspec = "refs/heads/master";
 
     info!("Pushing to remote branch: {}", &refspec);
 
@@ -290,7 +274,7 @@ pub fn clone_repo(url: &str, local_path: &str, branch: &str, ssh_key: &str) {
 #[tracing::instrument(name = "commit_changes", skip(ssh_key), fields())]
 pub fn commit_changes(manifest_repo_path: &str, ssh_key: &str) -> Result<(), GitError> {
     let commit_message = "chore(refs): gitops-operator updating image tags";
-    let manifest_repo = Repository::open(&manifest_repo_path)?;
+    let manifest_repo = Repository::open(manifest_repo_path)?;
 
     stage_and_push_changes(&manifest_repo, commit_message, ssh_key)
 }

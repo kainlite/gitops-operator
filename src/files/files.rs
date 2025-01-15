@@ -8,7 +8,7 @@ use tracing::{info, warn};
 
 fn get_deployment_from_file(file_path: &str) -> Result<Deployment, Error> {
     let yaml_content =
-        fs::read_to_string(&file_path).context("Failed to read deployment YAML file")?;
+        fs::read_to_string(file_path).context("Failed to read deployment YAML file")?;
 
     let deployment: Deployment = serde_yaml::from_str(&yaml_content)
         .context("Failed to parse YAML into Kubernetes Deployment")?;
@@ -23,7 +23,7 @@ pub fn needs_patching(file_path: &str, new_sha: &str) -> Result<bool, Error> {
     if let Some(spec) = deployment.spec {
         if let Some(template) = spec.template.spec {
             for container in &template.containers {
-                if container.image.as_ref().unwrap().contains(&new_sha) {
+                if container.image.as_ref().unwrap().contains(new_sha) {
                     info!("Image tag already updated... Aborting mission!");
                     return Ok(false);
                 }
@@ -31,7 +31,7 @@ pub fn needs_patching(file_path: &str, new_sha: &str) -> Result<bool, Error> {
         }
     }
 
-    return Ok(true);
+    Ok(true)
 }
 
 #[tracing::instrument(name = "clone_or_update_repo", skip(), fields())]
@@ -43,14 +43,14 @@ pub fn patch_deployment(file_path: &str, image_name: &str, new_sha: &str) -> Res
     if let Some(spec) = deployment.spec.as_mut() {
         if let Some(template) = spec.template.spec.as_mut() {
             for container in &mut template.containers {
-                if container.image.as_ref().unwrap().contains(&new_sha) {
+                if container.image.as_ref().unwrap().contains(new_sha) {
                     warn!("Image tag already updated... Aborting mission!");
                     return Err(anyhow::anyhow!(
                         "Image tag {} is already up to date",
                         new_sha
                     ));
                 }
-                if container.image.as_ref().unwrap().contains(&image_name) {
+                if container.image.as_ref().unwrap().contains(image_name) {
                     container.image = Some(format!("{}:{}", &image_name, &new_sha));
                 }
             }

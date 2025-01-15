@@ -125,7 +125,7 @@ mod tests {
         let repo_url = format!("file://{}", bare_dir.path().to_str().unwrap());
 
         // Attempt clone
-        fs::remove_dir_all(&target_dir.path()).unwrap();
+        fs::remove_dir_all(target_dir.path()).unwrap();
         let _ = clone_or_update_repo(
             &repo_url,
             target_dir.path().to_path_buf(),
@@ -149,7 +149,7 @@ mod tests {
             content, "test content",
             "Cloned content should match source"
         );
-        fs::remove_dir_all(&target_dir.path()).unwrap();
+        fs::remove_dir_all(target_dir.path()).unwrap();
     }
 
     #[test]
@@ -161,7 +161,7 @@ mod tests {
         // Create bare repository and target
         let bare_dir = source_repo.create_bare_clone();
         let target_dir = TempDir::new().unwrap();
-        fs::remove_dir_all(&target_dir.path()).unwrap();
+        fs::remove_dir_all(target_dir.path()).unwrap();
         let repo_url = format!("file://{}", bare_dir.path().to_str().unwrap());
 
         // Initial clone
@@ -195,7 +195,7 @@ mod tests {
             content, "new content",
             "Updated content should match source"
         );
-        fs::remove_dir_all(&target_dir.path()).unwrap();
+        fs::remove_dir_all(target_dir.path()).unwrap();
     }
 
     #[test]
@@ -216,7 +216,7 @@ mod tests {
         let repo_path = temp_dir.path();
 
         // Initialize a new git repository
-        let repo = Repository::init(&repo_path).unwrap();
+        let repo = Repository::init(repo_path).unwrap();
 
         // Add user name and email
         repo.config()
