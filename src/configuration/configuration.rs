@@ -12,6 +12,8 @@ use std::fs::remove_dir_all;
 use std::path::Path;
 use tracing::{error, info, warn};
 
+use crate::registry::{get_registry_auth_from_secret, RegistryChecker};
+
 use axum::Json;
 use futures::future;
 use kube::runtime::reflector;
@@ -40,6 +42,9 @@ pub struct Config {
     pub ssh_key_namespace: String,
     pub notifications_secret_name: Option<String>,
     pub notifications_secret_namespace: Option<String>,
+    pub registry_url: Option<String>,
+    pub registry_secret_name: Option<String>,
+    pub registry_secret_namespace: Option<String>,
     pub state: State,
 }
 
@@ -111,6 +116,18 @@ impl Entry {
             .get("gitops.operator.notifications_secret_namespace")
             .map(|name| name.to_string());
 
+        let registry_url = annotations
+            .get("gitops.operator.registry_secret_url")
+            .map(|name| name.to_string());
+
+        let registry_secret_name = annotations
+            .get("gitops.operator.registry_secret_name")
+            .map(|name| name.to_string());
+
+        let registry_secret_namespace = annotations
+            .get("gitops.operator.registry_secret_namespace")
+            .map(|name| name.to_string());
+
         info!("Processing: {}/{}", &namespace, &name);
 
         Some(Entry {
@@ -132,6 +149,9 @@ impl Entry {
                 ssh_key_namespace,
                 notifications_secret_name,
                 notifications_secret_namespace,
+                registry_url,
+                registry_secret_name,
+                registry_secret_namespace,
                 state: State::Queued,
             },
         })
@@ -211,6 +231,36 @@ impl Entry {
             }
         };
 
+        let registry_url = self
+            .config
+            .registry_url
+            .as_deref()
+            .unwrap_or("https://index.docker.io/v1/");
+
+        let registry_credentials = get_registry_auth_from_secret(
+            self.config
+                .registry_secret_name
+                .as_deref()
+                .unwrap_or("regcred"),
+            self.config
+                .registry_secret_namespace
+                .as_deref()
+                .unwrap_or("gitops-operator"),
+            registry_url,
+        )
+        .await;
+
+        let registry_checker = match registry_credentials {
+            Ok(credentials) => {
+                RegistryChecker::new(registry_url.to_string(), Some(credentials.to_string())).await
+            }
+            Err(e) => {
+                error!("Failed to get registry credentials: {:?}", e);
+                // return State::Failure(format!("Failed to get registry credentials: {:#?}", e));
+                Err(e)
+            }
+        };
+
         // Start process
         info!("Performing reconciliation for: {}", &self.name);
         let app_repo_path = format!("/tmp/app-{}-{}", &self.name, &self.config.observe_branch);
@@ -258,6 +308,29 @@ impl Entry {
                 return State::Failure(format!("Failed to get latest SHA: {:#?}", e));
             }
         };
+
+        if registry_checker.is_ok()
+            && !registry_checker
+                .expect("Failed to create instance of registry checker")
+                .check_image(&self.config.image_name, &new_sha)
+                .await
+                .unwrap_or(false)
+        {
+            let message = format!(
+                "Image: {}:{} not found in registry: {}",
+                &self.config.image_name, &self.config.observe_branch, &registry_url
+            );
+            if endpoint.is_some() {
+                match send_notification(&message, endpoint.as_deref()).await {
+                    Ok(_) => info!("Notification sent successfully"),
+                    Err(e) => {
+                        warn!("Failed to send notification: {:?}", e);
+                    }
+                }
+            }
+            error!("{}", message);
+            return State::Failure(message);
+        }
 
         let deployment_path = format!("{}/{}", &manifest_repo_path, &self.config.deployment_path);
 

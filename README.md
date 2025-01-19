@@ -64,6 +64,10 @@ metadata:
     gitops.operator.ssh_key_namespace: gitops-operator
     gitops.operator.notifications_secret_name: 'webhook-secret'
     gitops.operator.notifications_secret_namespace: 'gitops-operator'
+    gitops.operator.notifications_secret_name: 'webhook-secret'
+    gitops.operator.notifications_secret_namespace: 'gitops-operator'
+    gitops.operator.registry_secret_name: 'regcred'
+    gitops.operator.registry_secret_namespace: 'gitops-operator'
   labels:
     app: gitops-operator
   name: gitops-operator
@@ -74,7 +78,7 @@ spec:
 ```
 
 A bit more information about the annotations:
-```
+
     gitops.operator.enabled: # Wheter the operator should process this deployment or not
     gitops.operator.app_repository: # Git repository with SSH format for the application repository
     gitops.operator.manifest_repository: # Git repository with SSH format for the manifests repository
@@ -85,7 +89,8 @@ A bit more information about the annotations:
     gitops.operator.ssh_key_namespace: # The namespace of the secret containing the SSH key
     gitops.operator.notifications_secret_name: # OPTIONAL: Wether to try to send a Slack notification to the provided endpoint via the secret (the data field needs to be webhook-url)
     gitops.operator.notifications_secret_namespace: # OPTIONAL: Wether to try to send a Slack notification to the provided endpoint via the secret (the data field needs to be webhook-url)
-```
+    gitops.operator.registry_secret_name: # OPTIONAL: defaults to regcred
+    gitops.operator.registry_secret_namespace: # OPTIONAL: defaults to gitops-operator
 
 ### SSH key secret
 Note: you can create the secret as follows:
@@ -106,6 +111,14 @@ to create a secret per namespace, where you app is deployed):
 kubectl create secret generic webhook-secret  -n define_ns --from-literal=webhook-url=https://hooks.slack.com/services/...
 ```
 
+### Enable checking the Docker registry
+In order to check if the image is already present in the repository before patching the files you'll need a secret for
+the docker registry which can be created like this (these annotations are optional by default):
+```bash
+docker login
+kubectl -n gitops-operator create secret docker-registry regcred --from-file=/home/user/.docker/config.json
+```
+
 ### In-Cluster
 Apply manifests from [here](https://github.com/kainlite/gitops-operator-manifests), then you can trigger it manually using port-forward: `kubectl port-forward service/gitops-operator 8000:80`
 
@@ -117,27 +130,49 @@ reconcile method however it does the trick for this case):
 $ curl 0.0.0.0:8000/reconcile
 [
   {
+    "Success": "Deployment: gitops-operator is up to date, proceeding to next deployment..."
+  }
+]
+```
+
+Debug endpoint:
+```sh
+❯ curl localhost:8000/debug | jq
+[
+  {
     "container": "kainlite/gitops-operator",
     "name": "gitops-operator",
-    "namespace": "default",
+    "namespace": "gitops-operator",
     "annotations": {
-      "deployment.kubernetes.io/revision": "34",
+      "deployment.kubernetes.io/revision": "3",
       "gitops.operator.app_repository": "git@github.com:kainlite/gitops-operator.git",
       "gitops.operator.deployment_path": "app/00-deployment.yaml",
       "gitops.operator.enabled": "true",
       "gitops.operator.image_name": "kainlite/gitops-operator",
       "gitops.operator.manifest_repository": "git@github.com:kainlite/gitops-operator-manifests.git",
-      "gitops.operator.namespace": "default",
-      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"annotations\":{\"gitops.operator.app_repository\":\"git@github.com:kainlite/gitops-operator.git\",\"gitops.operator.deployment_path\":\"app/00-deployment.yaml\",\"gitops.operator.enabled\":\"true\",\"gitops.operator.image_name\":\"kainlite/gitops-operator\",\"gitops.operator.manifest_repository\":\"git@github.com:kainlite/gitops-operator-manifests.git\",\"gitops.operator.namespace\":\"default\"},\"labels\":{\"app\":\"gitops-operator\",\"argocd.argoproj.io/instance\":\"gitops-operator\"},\"name\":\"gitops-operator\",\"namespace\":\"default\"},\"spec\":{\"replicas\":1,\"selector\":{\"matchLabels\":{\"app\":\"gitops-operator\"}},\"template\":{\"metadata\":{\"labels\":{\"app\":\"gitops-operator\"}},\"spec\":{\"containers\":[{\"image\":\"kainlite/gitops-operator:a57e6e3a195464a8bbbdc1bff3a6f70ed236154d\",\"imagePullPolicy\":\"Always\",\"livenessProbe\":{\"failureThreshold\":5,\"httpGet\":{\"path\":\"/health\",\"port\":\"http\"},\"periodSeconds\":15},\"name\":\"gitops-operator\",\"ports\":[{\"containerPort\":8000,\"name\":\"http\",\"protocol\":\"TCP\"}],\"readinessProbe\":{\"httpGet\":{\"path\":\"/reconcile\",\"port\":\"http\"},\"initialDelaySeconds\":60,\"periodSeconds\":120,\"timeoutSeconds\":60},\"resources\":{\"limits\":{\"cpu\":\"1000m\",\"memory\":\"1024Mi\"},\"requests\":{\"cpu\":\"500m\",\"memory\":\"100Mi\"}},\"volumeMounts\":[{\"mountPath\":\"/home/nonroot/.ssh/id_rsa_demo\",\"name\":\"my-ssh-key\",\"readOnly\":true,\"subPath\":\"ssh-privatekey\"}]}],\"serviceAccountName\":\"gitops-operator\",\"volumes\":[{\"name\":\"my-ssh-key\",\"secret\":{\"items\":[{\"key\":\"ssh-privatekey\",\"path\":\"ssh-privatekey\"}],\"secretName\":\"my-ssh-key\"}}]}}}}\n"
+      "gitops.operator.namespace": "gitops-operator",
+      "gitops.operator.notifications": "true",
+      "gitops.operator.ssh_key_name": "ssh-key",
+      "gitops.operator.ssh_key_namespace": "gitops-operator",
     },
-    "version": "a57e6e3a195464a8bbbdc1bff3a6f70ed236154d",
+    "version": "3c0a88249fb61a0a4f4a65295f42b2dee3963c28",
     "config": {
       "enabled": true,
-      "namespace": "default",
+      "namespace": "gitops-operator",
       "app_repository": "git@github.com:kainlite/gitops-operator.git",
       "manifest_repository": "git@github.com:kainlite/gitops-operator-manifests.git",
       "image_name": "kainlite/gitops-operator",
-      "deployment_path": "app/00-deployment.yaml"
+      "deployment_path": "app/00-deployment.yaml",
+      "observe_branch": "master",
+      "tag_type": "long",
+      "ssh_key_name": "ssh-key",
+      "ssh_key_namespace": "gitops-operator",
+      "notifications_secret_name": null,
+      "notifications_secret_namespace": null,
+      "registry_url": null,
+      "registry_secret_name": null,
+      "registry_secret_namespace": null,
+      "state": "Queued"
     }
   }
 ]
