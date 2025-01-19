@@ -231,7 +231,7 @@ impl Entry {
             }
         };
 
-        let registry_url = self
+        let auth_registry_url = self
             .config
             .registry_url
             .as_deref()
@@ -246,9 +246,14 @@ impl Entry {
                 .registry_secret_namespace
                 .as_deref()
                 .unwrap_or("gitops-operator"),
-            registry_url,
+            auth_registry_url,
         )
         .await;
+
+        let registry_url = match auth_registry_url {
+            "https://index.docker.io/v1/" => "https://index.docker.io/v2/",
+            _ => auth_registry_url,
+        };
 
         let registry_checker = match registry_credentials {
             Ok(credentials) => {

@@ -128,12 +128,7 @@ impl RegistryChecker {
 
     #[tracing::instrument(name = "check_image", skip(self), fields())]
     pub async fn check_image(&self, image: &str, tag: &str) -> Result<bool> {
-        let url = format!(
-            "{}/{}/manifests/{}",
-            self.registry_url.replace("1", "2"),
-            image,
-            tag
-        );
+        let url = format!("{}/{}/manifests/{}", self.registry_url, image, tag);
 
         // First request - might result in 401 with auth challenge
         let response = self
