@@ -250,6 +250,7 @@ impl Entry {
         )
         .await;
 
+        info!("Creating registry checker for: {}", registry_url);
         let registry_checker = match registry_credentials {
             Ok(credentials) => {
                 RegistryChecker::new(registry_url.to_string(), Some(credentials.to_string())).await
@@ -309,6 +310,7 @@ impl Entry {
             }
         };
 
+        info!("Checking image: {}", &self.config.image_name);
         if registry_checker.is_ok()
             && !registry_checker
                 .expect("Failed to create instance of registry checker")

@@ -8,6 +8,7 @@ use reqwest::{
 };
 use serde::Deserialize;
 use serde_json::Value;
+use tracing::{error, info};
 
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
@@ -68,6 +69,7 @@ impl RegistryChecker {
         let mut headers = HeaderMap::new();
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
 
+        info!("Creating HTTP client for registry checks");
         let client = Client::builder()
             .default_headers(headers)
             .build()
@@ -119,6 +121,7 @@ impl RegistryChecker {
         let response = request.send().await?;
 
         if !response.status().is_success() {
+            error!("Failed to get bearer token: {}", response.status());
             anyhow::bail!("Failed to get bearer token: {}", response.status());
         }
 
@@ -135,6 +138,7 @@ impl RegistryChecker {
         };
 
         let url = format!("{}/{}/manifests/{}", registry_url, image, tag);
+        info!("Checking image: {}", url);
 
         // First request - might result in 401 with auth challenge
         let response = self
@@ -162,6 +166,7 @@ impl RegistryChecker {
                         .header(AUTHORIZATION, auth_value)
                         .send()
                         .await?;
+                    info!("registry checker status: {}", response.status());
 
                     return Ok(response.status().is_success());
                 }
