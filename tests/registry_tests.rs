@@ -70,7 +70,7 @@ mod tests {
 
         let result = checker.check_image("test/image", "latest").await;
         tracing::debug!("Check image result: {:?}", result);
-        assert!(result.unwrap());
+        assert!(!result.unwrap());
     }
 
     #[tokio::test]

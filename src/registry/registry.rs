@@ -128,7 +128,13 @@ impl RegistryChecker {
 
     #[tracing::instrument(name = "check_image", skip(self), fields())]
     pub async fn check_image(&self, image: &str, tag: &str) -> Result<bool> {
-        let url = format!("{}/{}/manifests/{}", self.registry_url, image, tag);
+        let registry_url = match self.registry_url.as_str() {
+            url if url.ends_with("/v1/") => url.replace("/v1", "/v2"),
+            url if url.ends_with("/v2/") => url.to_string(),
+            url => format!("{}/v2", url.trim_end_matches('/')),
+        };
+
+        let url = format!("{}/{}/manifests/{}", registry_url, image, tag);
 
         // First request - might result in 401 with auth challenge
         let response = self
