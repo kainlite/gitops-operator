@@ -264,9 +264,9 @@ impl Entry {
 
         // Start process
         info!("Performing reconciliation for: {}", &self.name);
-        let app_repo_path = format!("/tmp/app-{}-{}", &self.name, &self.config.observe_branch);
+        let app_repo_path = format!("/tmp/app-{}-{}/", &self.name, &self.config.observe_branch);
         let manifest_repo_path = format!(
-            "/tmp/manifest-{}-{}",
+            "/tmp/manifest-{}-{}/",
             &self.name, &self.config.observe_branch
         );
 

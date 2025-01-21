@@ -300,15 +300,15 @@ mod tests {
         // Call reconcile endpoint
         let response = Entry::reconcile(AxumState(reader)).await;
         let entries = response.0;
+        dbg!(&entries);
 
         // TODO: fix/improve this test
         assert_eq!(entries.len(), 1);
-        let _entry1 = entries
+        let entry1 = entries
             .iter()
-            .find(|e| **e == State::Failure("kalsd".to_string()));
-        println!("{:#?}", _entry1);
-
-        // assert!(entry1.to_string().contains("test-app"));
+            .find(|e| **e == State::Failure("".to_string()));
+        assert!(entry1.is_none());
+        // assert!(_entry1.to_string().contains("test-app"));
     }
 
     #[tokio::test]
@@ -426,12 +426,10 @@ mod tests {
         // Check that the second deployment (disabled) is not present
         assert!(!entries
             .iter()
-            .any(|e| { *e == State::Failure("kalsd".to_string()) }));
+            .any(|e| { *e == State::Failure("".to_string()) }));
 
         // Verify the invalid deployment is not included
-        assert!(!entries
-            .iter()
-            .any(|e| *e == State::Failure("kalsd".to_string())));
+        assert!(!entries.iter().any(|e| *e == State::Failure("".to_string())));
     }
 
     #[tokio::test]

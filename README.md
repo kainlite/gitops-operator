@@ -64,8 +64,6 @@ metadata:
     gitops.operator.ssh_key_namespace: gitops-operator
     gitops.operator.notifications_secret_name: 'webhook-secret'
     gitops.operator.notifications_secret_namespace: 'gitops-operator'
-    gitops.operator.notifications_secret_name: 'webhook-secret'
-    gitops.operator.notifications_secret_namespace: 'gitops-operator'
     gitops.operator.registry_secret_name: 'regcred'
     gitops.operator.registry_secret_namespace: 'gitops-operator'
   labels:
