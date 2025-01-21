@@ -319,8 +319,8 @@ impl Entry {
                 .unwrap_or(false)
         {
             let message = format!(
-                ":probing_cane: image: {}/{} not found in registry: {}, it is likely still building...",
-                &self.config.image_name, &new_sha, &registry_url
+                ":probing_cane: image: https://hub.docker.com/repository/docker/{}/tags/{} not found in registry, it is likely still building...",
+                &self.config.image_name, &new_sha
             );
             if endpoint.is_some() {
                 match send_notification(&message, endpoint.as_deref()).await {
