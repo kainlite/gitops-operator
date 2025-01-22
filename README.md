@@ -1,6 +1,6 @@
 # gitops-operator
 
-[![ci](https://github.com/kainlite/gitops-operator/actions/workflows/ci.yml/badge.svg)](https://github.com/kainlite/gitops-operator/actions/workflows/ci.yml)
+[![ci](https://github.com/kainlite/gitops-operator/actions/workflows/ci.yaml/badge.svg)](https://github.com/kainlite/gitops-operator/actions/workflows/ci.yaml)
 [![docker image](https://img.shields.io/docker/pulls/kainlite/gitops-operator.svg)](https://hub.docker.com/r/kainlite/gitops-operator)
 [![codecov](https://codecov.io/gh/kainlite/gitops-operator/branch/master/graph/badge.svg)](https://codecov.io/gh/kainlite/gitops-operator)
 

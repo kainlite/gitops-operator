@@ -75,7 +75,18 @@ mod integration_tests {
                 fs::create_dir_all(dir.path().join("deployments")).unwrap();
                 fs::write(
                     dir.path().join("deployments/app.yaml"),
-                    "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: test-app",
+                    r#"apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-app
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+      - name: test-app
+        image: test-app:cdea6a753ce3867ab4938088f538338d1e025d7d
+"#,
                 )
                 .unwrap();
             }
@@ -188,84 +199,6 @@ mod integration_tests {
 
     #[tokio::test]
     #[serial]
-    async fn test_full_reconcile_workflow_already_up_to_date() {
-        // Setup test repositories
-        let repos = TestRepos::new();
-
-        // Create test deployment
-        let deployment = create_test_deployment();
-
-        // Create Entry from deployment
-        let entry = Entry::new(&deployment).expect("Failed to create entry from deployment");
-
-        // Verify entry configuration
-        assert!(entry.config.enabled);
-        assert_eq!(entry.config.namespace, "default");
-
-        // Clone repositories
-        let app_path = repos.app_repo.path().to_str().unwrap();
-        let manifest_path = repos.manifest_repo.path().to_str().unwrap();
-        let app_link_path = format!("/tmp/app-{}-master", entry.name);
-        let manifest_link_path = format!("/tmp/manifest-{}-master", entry.name);
-
-        // Use a dummy SSH key for testing
-        let ssh_key = "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==";
-
-        // Clone both repositories
-        clone_repo(&repos.get_app_url(), &app_link_path, "master", ssh_key);
-        clone_repo(
-            &repos.get_manifest_url(),
-            &manifest_link_path,
-            "master",
-            ssh_key,
-        );
-
-        // Get latest commit
-        let latest_commit = get_latest_commit(Path::new(&app_link_path), "master", "long", ssh_key)
-            .expect("Failed to get latest commit");
-
-        // Verify we got a valid commit hash
-        assert_eq!(latest_commit.len(), 40, "Should get full commit hash");
-
-        // Make changes to manifest repository
-        let deployment_path = format!("{}/deployments/app.yaml", manifest_link_path);
-        fs::write(&deployment_path, "Updated content").expect("Failed to write deployment file");
-
-        // Commit and push changes
-        let result = commit_changes(&manifest_link_path, ssh_key);
-        assert!(result.is_ok(), "Should successfully commit changes");
-
-        // Process deployment
-        let state = entry.process_deployment().await;
-
-        // Verify final state
-        match state {
-            State::Success(msg) => {
-                assert!(
-                    msg.contains("up to date") || msg.contains("patched successfully"),
-                    "Should indicate successful processing"
-                );
-            }
-            State::Failure(msg) => {
-                assert!(
-                    msg.contains("probing_cane") || msg.contains("hub.docker."),
-                    "Should indicate successful processing"
-                );
-            }
-            _ => {
-                panic!("Unexpected state: {:?}", state);
-            }
-        }
-
-        // Clean up
-        fs::remove_dir_all(app_path).ok();
-        fs::remove_dir_all(app_link_path).ok();
-        fs::remove_dir_all(manifest_path).ok();
-        fs::remove_dir_all(manifest_link_path).ok();
-    }
-
-    #[tokio::test]
-    #[serial]
     async fn test_full_reconcile_workflow() {
         // Setup test repositories
         let repos = TestRepos::new();
@@ -286,6 +219,82 @@ mod integration_tests {
         let app_link_path = format!("/tmp/app-{}-master", entry.name);
         let manifest_link_path = format!("/tmp/manifest-{}-master", entry.name);
 
+        // Clean up possible lingering synlinks
+        fs::remove_dir_all(&app_link_path).ok();
+        fs::remove_dir_all(&manifest_link_path).ok();
+
+        // Use a dummy SSH key for testing
+        let ssh_key = "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==";
+
+        // Clone both repositories
+        clone_repo(&repos.get_app_url(), &app_link_path, "master", ssh_key);
+        clone_repo(
+            &repos.get_manifest_url(),
+            &manifest_link_path,
+            "master",
+            ssh_key,
+        );
+
+        // Get latest commit
+        let latest_commit = get_latest_commit(Path::new(&app_link_path), "master", "long", ssh_key)
+            .expect("Failed to get latest commit");
+        dbg!(&latest_commit);
+
+        // Verify we got a valid commit hash
+        assert_eq!(latest_commit.len(), 40, "Should get full commit hash");
+
+        // Process deployment
+        let state = entry.process_deployment().await;
+
+        // Verify final state
+        match state {
+            State::Success(msg) => {
+                assert!(
+                    msg.contains("patched successfully to version"),
+                    "Should indicate successful processing"
+                );
+            }
+            State::Failure(msg) => {
+                panic!("Processing failed: {}", msg);
+            }
+            _ => {
+                panic!("Unexpected state: {:?}", state);
+            }
+        }
+
+        // Clean up
+        fs::remove_dir_all(app_path).ok();
+        fs::remove_dir_all(app_link_path).ok();
+        fs::remove_dir_all(manifest_path).ok();
+        fs::remove_dir_all(manifest_link_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_full_reconcile_workflow_already_up_to_date() {
+        // Setup test repositories
+        let repos = TestRepos::new();
+
+        // Create test deployment
+        let deployment = create_test_deployment();
+
+        // Create Entry from deployment
+        let entry = Entry::new(&deployment).expect("Failed to create entry from deployment");
+
+        // Verify entry configuration
+        assert!(entry.config.enabled);
+        assert_eq!(entry.config.namespace, "default");
+
+        // Clone repositories
+        let app_path = repos.app_repo.path().to_str().unwrap();
+        let manifest_path = repos.manifest_repo.path().to_str().unwrap();
+        let app_link_path = format!("/tmp/app-{}-master", entry.name);
+        let manifest_link_path = format!("/tmp/manifest-{}-master", entry.name);
+
+        // Clean up possible lingering synlinks
+        fs::remove_dir_all(&app_link_path).ok();
+        fs::remove_dir_all(&manifest_link_path).ok();
+
         // Use a dummy SSH key for testing
         let ssh_key = "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==";
 
@@ -313,22 +322,25 @@ mod integration_tests {
         let result = commit_changes(&manifest_link_path, ssh_key);
         assert!(result.is_ok(), "Should successfully commit changes");
 
-        dbg!(&entry);
-
         // Process deployment
-        let state = entry.process_deployment().await;
-        dbg!(&state);
+        let _state = &entry.clone().process_deployment().await;
+
+        // Process deployment again
+        let state = &entry.process_deployment().await;
 
         // Verify final state
         match state {
             State::Success(msg) => {
                 assert!(
-                    msg.contains("patched successfully") || msg.contains("up to date"),
+                    msg.contains("up to date") || msg.contains("patched successfully"),
                     "Should indicate successful processing"
                 );
             }
             State::Failure(msg) => {
-                panic!("Processing failed: {}", msg);
+                assert!(
+                    msg.contains("probing_cane") || msg.contains("hub.docker."),
+                    "Should indicate successful processing"
+                );
             }
             _ => {
                 panic!("Unexpected state: {:?}", state);
