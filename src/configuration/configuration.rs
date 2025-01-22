@@ -310,30 +310,6 @@ impl Entry {
             }
         };
 
-        info!("Checking image: {}", &self.config.image_name);
-        if registry_checker.is_ok()
-            && !registry_checker
-                .expect("Failed to create instance of registry checker")
-                .check_image(&self.config.image_name, &new_sha)
-                .await
-                .unwrap_or(false)
-        {
-            let message = format!(
-                ":probing_cane: image: https://hub.docker.com/repository/docker/{}/tags/{} not found in registry, it is likely still building...",
-                &self.config.image_name, &new_sha
-            );
-            if endpoint.is_some() {
-                match send_notification(&message, endpoint.as_deref()).await {
-                    Ok(_) => info!("Notification sent successfully"),
-                    Err(e) => {
-                        warn!("Failed to send notification: {:?}", e);
-                    }
-                }
-            }
-            error!("{}", message);
-            return State::Failure(message);
-        }
-
         let deployment_path = format!("{}/{}", &manifest_repo_path, &self.config.deployment_path);
 
         if needs_patching(&deployment_path, &new_sha).unwrap_or(false) {
@@ -391,6 +367,30 @@ impl Entry {
 
             return State::Success(message);
         } else {
+            info!("Checking image: {}", &self.config.image_name);
+            if registry_checker.is_ok()
+                && !registry_checker
+                    .expect("Failed to create instance of registry checker")
+                    .check_image(&self.config.image_name, &new_sha)
+                    .await
+                    .unwrap_or(false)
+            {
+                let message = format!(
+                ":probing_cane: image: https://hub.docker.com/repository/docker/{}/tags with SHA: {} not found in registry, it is likely still building...",
+                &self.config.image_name, &new_sha
+            );
+                if endpoint.is_some() {
+                    match send_notification(&message, endpoint.as_deref()).await {
+                        Ok(_) => info!("Notification sent successfully"),
+                        Err(e) => {
+                            warn!("Failed to send notification: {:?}", e);
+                        }
+                    }
+                }
+                error!("{}", message);
+                return State::Failure(message);
+            }
+
             let message = format!(
                 "Deployment: {} is up to date, proceeding to next deployment...",
                 &self.name
