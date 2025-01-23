@@ -30,7 +30,17 @@ mod tests {
             // Create initial commit on master branch
             fs::write(dir.path().join("README.md"), "# Test Repository").unwrap();
             Self::git_command(&["add", "."], &dir);
-            Self::git_command(&["commit", "-m", "Initial commit", "-n"], &dir);
+            Self::git_command(
+                &[
+                    "commit",
+                    "-m",
+                    "Initial commit",
+                    "-n",
+                    "--author",
+                    "test <test@local>",
+                ],
+                &dir,
+            );
 
             // Ensure we're on master branch (some git versions might use 'main' by default)
             Self::git_command(&["checkout", "-b", "master"], &dir);
@@ -70,7 +80,17 @@ mod tests {
         fn add_and_commit_file(&self, filename: &str, content: &str, message: &str) {
             fs::write(self.dir.path().join(filename), content).unwrap();
             Self::git_command(&["add", filename], &self.dir);
-            Self::git_command(&["commit", "-m", message, "-n"], &self.dir);
+            Self::git_command(
+                &[
+                    "commit",
+                    "-m",
+                    message,
+                    "-n",
+                    "--author",
+                    "test <test@local>",
+                ],
+                &self.dir,
+            );
         }
     }
 

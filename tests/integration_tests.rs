@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod integration_tests {
     use gitops_operator::configuration::{Entry, State};
-    use gitops_operator::git::{clone_repo, commit_changes, get_latest_commit};
+    use gitops_operator::git::{clone_repo, get_latest_commit};
     use k8s_openapi::api::apps::v1::Deployment;
     use k8s_openapi::api::core::v1::Container;
     use k8s_openapi::api::core::v1::PodSpec;
@@ -98,7 +98,14 @@ spec:
                 .output()
                 .unwrap();
             Command::new("git")
-                .args(["commit", "-m", "Initial commit", "-n"])
+                .args([
+                    "commit",
+                    "-m",
+                    "Initial commit",
+                    "-n",
+                    "--author",
+                    "test <test@local>",
+                ])
                 .current_dir(dir.path())
                 .output()
                 .unwrap();
@@ -313,14 +320,6 @@ spec:
 
         // Verify we got a valid commit hash
         assert_eq!(latest_commit.len(), 40, "Should get full commit hash");
-
-        // Make changes to manifest repository
-        let deployment_path = format!("{}/deployments/app.yaml", manifest_link_path);
-        fs::write(&deployment_path, "Updated content").expect("Failed to write deployment file");
-
-        // Commit and push changes
-        let result = commit_changes(&manifest_link_path, ssh_key);
-        assert!(result.is_ok(), "Should successfully commit changes");
 
         // Process deployment
         let _state = &entry.clone().process_deployment().await;

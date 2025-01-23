@@ -1,5 +1,4 @@
 use crate::files::{needs_patching, patch_deployment};
-
 use crate::git::{clone_repo, commit_changes, get_latest_commit};
 use crate::notifications::send as send_notification;
 use anyhow::{Context, Error};
