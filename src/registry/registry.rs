@@ -17,14 +17,14 @@ struct TokenResponse {
 }
 
 #[derive(Debug)]
-struct AuthChallenge {
-    realm: String,
-    service: String,
-    scope: String,
+pub struct AuthChallenge {
+    pub realm: String,
+    pub service: String,
+    pub scope: String,
 }
 
 impl AuthChallenge {
-    fn from_header(header: &str) -> Option<Self> {
+    pub fn from_header(header: &str) -> Option<Self> {
         let mut realm = None;
         let mut service = None;
         let mut scope = None;
@@ -57,11 +57,11 @@ impl AuthChallenge {
 
 #[derive(Debug)]
 pub struct RegistryChecker {
-    client: Client,
-    registry_url: String,
-    auth_token: Option<String>,
-    username: Option<String>,
-    password: Option<String>,
+    pub client: Client,
+    pub registry_url: String,
+    pub auth_token: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 impl RegistryChecker {
@@ -107,7 +107,7 @@ impl RegistryChecker {
         })
     }
 
-    async fn get_bearer_token(&self, challenge: &AuthChallenge) -> Result<String> {
+    pub async fn get_bearer_token(&self, challenge: &AuthChallenge) -> Result<String> {
         let mut request = self
             .client
             .get(&challenge.realm)
