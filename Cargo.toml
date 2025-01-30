@@ -4,7 +4,8 @@ version = "0.8.0"
 authors = ["Gabriel Garrido <kainlite@gmail.com>"]
 edition = "2021"
 license = "Apache-2.0"
-publish = false
+description = "Kubernetes Operator for GitOps workflows"
+repository = "https://github.com/kainlite/gitops-operator"
 
 [[bin]]
 doc = false
