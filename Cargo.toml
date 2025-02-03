@@ -6,6 +6,8 @@ edition = "2021"
 license = "Apache-2.0"
 description = "Kubernetes Operator for GitOps workflows"
 repository = "https://github.com/kainlite/gitops-operator"
+categories = ["command-line-utilities", "network-programming"]
+keywords = ["cloud", "kubernetes", "gitops", "gitops-operator"]
 
 [[bin]]
 doc = false
