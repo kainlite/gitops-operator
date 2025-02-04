@@ -4,8 +4,6 @@
 [![docker image](https://img.shields.io/docker/pulls/kainlite/gitops-operator.svg)](https://hub.docker.com/r/kainlite/gitops-operator)
 [![codecov](https://codecov.io/gh/kainlite/gitops-operator/branch/master/graph/badge.svg)](https://codecov.io/gh/kainlite/gitops-operator)
 
-https://hub.docker.com/r/kainlite/gitops-operator/tags/)
-
 Basically this is a GitOps controller working in pull mode (from the cluster), triggered by Kubernetes on a readiness check (this is a
 hack) to trigger our reconcile method, while this is a learning project maybe some day it will be able to handle serious
 workloads.
@@ -15,7 +13,7 @@ cluster), before this operator existed I used Argo CD image updater, I still use
 running.
 
 ## Article
-You can [read](https://redbeard.team/en/blog/create-your-own-gitops-controller-with-rust) or watch the video here (coming soon tm)... 
+You can [read](https://segfault.pw/en/blog/create-your-own-gitops-controller-with-rust) or watch the video here (coming soon tm)... 
 
 ### Locally
 Run against your current Kubernetes context:
