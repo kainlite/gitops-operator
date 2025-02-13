@@ -6,6 +6,8 @@ permissions:
   pull-requests: write
 
 jobs:
+  tests:
+    uses: ./.github/workflows/tests.yaml
   dependabot:
     runs-on: ubuntu-latest
     if: ${{ github.actor == 'dependabot[bot]' }}
@@ -16,15 +18,15 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      # - name: Approve a PR
-      #   run: gh pr review --approve "$PR_URL"
-      #   env:
-      #     PR_URL: ${{github.event.pull_request.html_url}}
-      #     GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      - name: Approve a PR
+        run: gh pr review --approve "$PR_URL"
+        env:
+         PR_URL: ${{github.event.pull_request.html_url}}
+         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
-      #- name: Enable auto-merge for Dependabot PRs
-      #  #if: ${{contains(steps.metadata.outputs.dependency-names, 'my-dependency') && steps.metadata.outputs.update-type == 'version-update:semver-patch'}}
-      #  run: gh pr merge --auto --squash "$PR_URL"
-      #  env:
-      #    PR_URL: ${{github.event.pull_request.html_url}}
-      #    GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      - name: Enable auto-merge for Dependabot PRs
+        #if: ${{contains(steps.metadata.outputs.dependency-names, 'my-dependency') && steps.metadata.outputs.update-type == 'version-update:semver-patch'}}
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
