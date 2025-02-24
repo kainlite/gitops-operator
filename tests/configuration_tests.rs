@@ -424,9 +424,11 @@ mod tests {
         // assert!(entry1.to_string().contains("test-app1"));
 
         // Check that the second deployment (disabled) is not present
-        assert!(!entries
-            .iter()
-            .any(|e| { *e == State::Failure("".to_string()) }));
+        assert!(
+            !entries
+                .iter()
+                .any(|e| { *e == State::Failure("".to_string()) })
+        );
 
         // Verify the invalid deployment is not included
         assert!(!entries.iter().any(|e| *e == State::Failure("".to_string())));

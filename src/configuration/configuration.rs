@@ -11,7 +11,7 @@ use std::fs::remove_dir_all;
 use std::path::Path;
 use tracing::{error, info, warn};
 
-use crate::registry::{get_registry_auth_from_secret, RegistryChecker};
+use crate::registry::{RegistryChecker, get_registry_auth_from_secret};
 
 use axum::Json;
 use futures::future;
@@ -375,9 +375,9 @@ impl Entry {
                     .unwrap_or(false)
             {
                 let message = format!(
-                ":probing_cane: image: https://hub.docker.com/repository/docker/{}/tags with SHA: {} not found in registry, it is likely still building...",
-                &self.config.image_name, &new_sha
-            );
+                    ":probing_cane: image: https://hub.docker.com/repository/docker/{}/tags with SHA: {} not found in registry, it is likely still building...",
+                    &self.config.image_name, &new_sha
+                );
                 if endpoint.is_some() {
                     match send_notification(&message, endpoint.as_deref()).await {
                         Ok(_) => info!("Notification sent successfully"),

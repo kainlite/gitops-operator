@@ -1,19 +1,19 @@
-use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
+use opentelemetry::{KeyValue, global, trace::TracerProvider as _};
 use opentelemetry_sdk::{
+    Resource,
     metrics::{MeterProviderBuilder, PeriodicReader},
     runtime,
     trace::TracerProvider,
-    Resource,
 };
 use opentelemetry_semantic_conventions::{
-    attribute::{SERVICE_NAME, SERVICE_VERSION},
     SCHEMA_URL,
+    attribute::{SERVICE_NAME, SERVICE_VERSION},
 };
-use tracing::subscriber::set_global_default;
 use tracing::Subscriber;
+use tracing::subscriber::set_global_default;
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
+use tracing_subscriber::{EnvFilter, Registry, layer::SubscriberExt};
 
 pub fn resource() -> Resource {
     Resource::from_schema_url(

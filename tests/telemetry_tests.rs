@@ -67,7 +67,8 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_get_subscriber_with_env_filter() {
-        std::env::set_var("RUST_LOG", "debug");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("RUST_LOG", "debug") };
         setup_test_environment().await;
 
         let span = tracing::info_span!("test_span");

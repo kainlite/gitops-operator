@@ -3,10 +3,10 @@ mod tests {
     use gitops_operator::registry::*;
 
     use serde_json::json;
-    use tracing_subscriber::{fmt, EnvFilter};
+    use tracing_subscriber::{EnvFilter, fmt};
     use wiremock::{
-        matchers::{header, method, path, query_param},
         Mock, MockServer, ResponseTemplate,
+        matchers::{header, method, path, query_param},
     };
 
     // Initialize logging for tests

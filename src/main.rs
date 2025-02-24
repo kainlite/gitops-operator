@@ -1,13 +1,13 @@
 use axum::extract::State;
 use axum::http;
 use axum::routing::get;
-use axum::{routing, Json, Router};
+use axum::{Json, Router, routing};
 use axum_prometheus::PrometheusMetricLayer;
-use futures::{future, StreamExt};
+use futures::{StreamExt, future};
 use gitops_operator::configuration::{Entry, State as ConfigState};
 use gitops_operator::telemetry::{get_subscriber, init_subscriber};
 use k8s_openapi::api::apps::v1::Deployment;
-use kube::runtime::{reflector, watcher, WatchStreamExt};
+use kube::runtime::{WatchStreamExt, reflector, watcher};
 use kube::{Api, Client, ResourceExt};
 use tower_http::trace::TraceLayer;
 use tracing::Level;

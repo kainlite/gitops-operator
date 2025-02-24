@@ -2,7 +2,7 @@
 name = "gitops-operator"
 version = "0.8.0"
 authors = ["Gabriel Garrido <kainlite@gmail.com>"]
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
 description = "Kubernetes Operator for GitOps workflows"
 repository = "https://github.com/kainlite/gitops-operator"

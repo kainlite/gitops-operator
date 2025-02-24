@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use k8s_openapi::api::core::v1::Secret;
-use kube::{api::Api, Client as K8sClient};
+use kube::{Client as K8sClient, api::Api};
 use reqwest::{
-    header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, WWW_AUTHENTICATE},
     Client,
+    header::{ACCEPT, AUTHORIZATION, HeaderMap, HeaderValue, WWW_AUTHENTICATE},
 };
 use serde::Deserialize;
 use serde_json::Value;

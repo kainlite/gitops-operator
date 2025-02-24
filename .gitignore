@@ -5,3 +5,4 @@ id_rsa**
 tests/default_**
 *.html
 .git
+migration.txt

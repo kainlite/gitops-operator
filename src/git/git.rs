@@ -1,6 +1,6 @@
 use crate::git::utils::create_signature;
 use git2::{
-    build::RepoBuilder, Cred, Error as GitError, FetchOptions, RemoteCallbacks, Repository,
+    Cred, Error as GitError, FetchOptions, RemoteCallbacks, Repository, build::RepoBuilder,
 };
 
 use std::path::{Path, PathBuf};
