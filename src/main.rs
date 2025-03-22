@@ -5,7 +5,7 @@ use axum::{Json, Router, routing};
 use axum_prometheus::PrometheusMetricLayer;
 use futures::{StreamExt, future};
 use gitops_operator::configuration::{Entry, State as ConfigState};
-use gitops_operator::telemetry::{get_subscriber, init_subscriber};
+use gitops_operator::telemetry::init_subscriber;
 use k8s_openapi::api::apps::v1::Deployment;
 use kube::runtime::{WatchStreamExt, reflector, watcher};
 use kube::{Api, Client, ResourceExt};
@@ -39,8 +39,7 @@ async fn debug(State(store): State<Cache>) -> Json<Vec<Entry>> {
 #[instrument]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let subscriber = get_subscriber("gitops-operator".into(), "debug,tower_http=debug".into());
-    init_subscriber(subscriber);
+    init_subscriber("gitops-operator".into(), "debug,tower_http=debug".into());
 
     info!("Starting gitops-operator");
 
