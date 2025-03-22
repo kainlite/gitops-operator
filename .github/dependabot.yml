@@ -36,14 +36,16 @@ updates:
           - anyhow
           - thiserror
           - log
-          - tracing
-          - tracing*
           - syn
           - quote
           - heck
           - tokio
           - typed-builder
           - schemars
+      tracing:
+        patterns:
+          - tracing
+          - tracing*
       rest:
         patterns:
           - .*
