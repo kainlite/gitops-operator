@@ -2,8 +2,6 @@
 mod tests {
     use gitops_operator::telemetry::{init_subscriber, resource};
     use opentelemetry::global;
-    use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
-    use opentelemetry_semantic_conventions::resource::SERVICE_VERSION;
     use std::sync::Once;
     use std::time::Duration;
     use tokio::time::timeout;
@@ -16,6 +14,7 @@ mod tests {
             init_subscriber("test-telemetry".into(), "debug".into());
         });
     }
+
     // Helper function to set up a test environment
     async fn setup_test_environment() {
         // Small delay to ensure cleanup is complete
@@ -32,14 +31,45 @@ mod tests {
         }
     }
 
-    // #[tokio::test(flavor = "multi_thread")]
-    #[tokio::test()]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_resource_creation() {
         let resource = resource("gitops-operator".into());
         let attributes = resource.iter().collect::<Vec<_>>();
 
-        assert!(attributes.iter().any(|kv| kv.0.as_str() == SERVICE_NAME));
-        assert!(attributes.iter().any(|kv| kv.1.as_str() == SERVICE_VERSION));
+        // Print resource for debugging
+        println!("Resource: {:?}", resource);
+
+        // Check for service name
+        let has_service_name = attributes.iter().any(|(k, _)| k.as_str() == "SERVICE_NAME");
+        println!("Has SERVICE_NAME: {}", has_service_name);
+
+        // Check for service version
+        let has_service_version = attributes
+            .iter()
+            .any(|(k, _)| k.as_str() == "SERVICE_VERSION");
+        println!("Has SERVICE_VERSION: {}", has_service_version);
+
+        assert!(has_service_name, "SERVICE_NAME attribute not found");
+        assert!(has_service_version, "SERVICE_VERSION attribute not found");
+
+        // Also check the values if needed
+        let service_name_value = attributes
+            .iter()
+            .find(|(k, _)| k.as_str() == "SERVICE_NAME")
+            .map(|(_, v)| v.to_string());
+        println!("SERVICE_NAME value: {:?}", service_name_value);
+
+        let service_version_value = attributes
+            .iter()
+            .find(|(k, _)| k.as_str() == "SERVICE_VERSION")
+            .map(|(_, v)| v.to_string());
+        println!("SERVICE_VERSION value: {:?}", service_version_value);
+
+        assert_eq!(service_name_value, Some("gitops-operator".to_string()));
+        assert_eq!(
+            service_version_value,
+            Some(env!("CARGO_PKG_VERSION").to_string())
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
