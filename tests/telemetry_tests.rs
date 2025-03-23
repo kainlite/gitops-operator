@@ -32,13 +32,14 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    // #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test()]
     async fn test_resource_creation() {
         let resource = resource("gitops-operator".into());
         let attributes = resource.iter().collect::<Vec<_>>();
 
         assert!(attributes.iter().any(|kv| kv.0.as_str() == SERVICE_NAME));
-        assert!(attributes.iter().any(|kv| kv.0.as_str() == SERVICE_VERSION));
+        assert!(attributes.iter().any(|kv| kv.1.as_str() == SERVICE_VERSION));
     }
 
     #[tokio::test(flavor = "multi_thread")]
