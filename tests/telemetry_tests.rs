@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use gitops_operator::telemetry::{get_subscriber, init_subscriber, resource};
+    use gitops_operator::telemetry::{init_subscriber, resource};
     use opentelemetry::global;
     use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
     use opentelemetry_semantic_conventions::resource::SERVICE_VERSION;
@@ -13,15 +13,11 @@ mod tests {
     // Initialize telemetry once for all tests
     fn init_test_telemetry() {
         INIT.call_once(|| {
-            let subscriber = get_subscriber("test-telemetry".into(), "debug".into());
-            init_subscriber(subscriber);
+            init_subscriber("test-telemetry".into(), "debug".into());
         });
     }
     // Helper function to set up a test environment
     async fn setup_test_environment() {
-        // Reset global state
-        opentelemetry::global::shutdown_tracer_provider();
-
         // Small delay to ensure cleanup is complete
         tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -36,23 +32,9 @@ mod tests {
         }
     }
 
-    // Helper function to clean up after tests
-    async fn cleanup_test_environment() {
-        match timeout(Duration::from_secs(5), async {
-            opentelemetry::global::shutdown_tracer_provider();
-        })
-        .await
-        {
-            Ok(_) => (),
-            Err(_) => eprintln!(
-                "Warning: Cleanup timeout - some resources might not be properly released"
-            ),
-        }
-    }
-
     #[tokio::test(flavor = "multi_thread")]
     async fn test_resource_creation() {
-        let resource = resource();
+        let resource = resource("gitops-operator".into());
         let attributes = resource.iter().collect::<Vec<_>>();
 
         assert!(attributes.iter().any(|kv| kv.0.as_str() == SERVICE_NAME));
@@ -62,7 +44,6 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_get_subscriber_creates_valid_subscriber() {
         setup_test_environment().await;
-        cleanup_test_environment().await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -76,8 +57,6 @@ mod tests {
 
         tracing::debug!("This is a debug message");
         tracing::info!(event = "test_event", "Testing telemetry configuration");
-
-        cleanup_test_environment().await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -91,8 +70,6 @@ mod tests {
             .build();
 
         counter.add(1, &[]);
-
-        cleanup_test_environment().await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -102,8 +79,6 @@ mod tests {
         // Verify we can create spans after initialization
         let span = tracing::info_span!("test_span");
         assert!(!span.is_disabled()); // Since we're in a test environment
-
-        cleanup_test_environment().await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -120,7 +95,5 @@ mod tests {
 
         // Log an event within the span
         tracing::info!(event = "test_event", "Testing telemetry configuration");
-
-        cleanup_test_environment().await;
     }
 }
