@@ -47,7 +47,7 @@ tracing-opentelemetry = "0.29.0"
 opentelemetry-stdout = "0.28.0"
 
 [dependencies.kube]
-version = "0.98.0"
+version = "0.99.0"
 features = ["runtime"]
 
 [dev-dependencies]
