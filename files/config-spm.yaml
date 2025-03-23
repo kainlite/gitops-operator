@@ -4,10 +4,19 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [jaeger_storage_exporter, spanmetrics]
+      exporters: [jaeger_storage_exporter, spanmetrics, debug]
     metrics/spanmetrics:
       receivers: [spanmetrics]
       exporters: [prometheus]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+
   telemetry:
     resource:
       service.name: jaeger
@@ -41,6 +50,7 @@ receivers:
   otlp:
     protocols:
       grpc:
+        endpoint: "0.0.0.0:4317"
       http:
         endpoint: "0.0.0.0:4318"
 
@@ -52,3 +62,5 @@ exporters:
     trace_storage: some_storage
   prometheus:
     endpoint: "0.0.0.0:8889"
+  debug:
+    verbosity: detailed
