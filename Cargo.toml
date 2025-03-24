@@ -1,6 +1,6 @@
 [package]
 name = "gitops-operator"
-version = "0.8.1"
+version = "0.8.3"
 authors = ["Gabriel Garrido <kainlite@gmail.com>"]
 edition = "2024"
 license = "Apache-2.0"
@@ -43,7 +43,7 @@ opentelemetry_sdk = { version = "0.29.0", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.29.0", features = ["tonic", "grpc-tonic"] }
 opentelemetry-semantic-conventions = "0.29.0"
 opentelemetry-appender-tracing = "0.29.0"
-tracing-opentelemetry = { git = "https://github.com/tokio-rs/tracing-opentelemetry", branch = "v0.1.x" }
+tracing-opentelemetry = { version = "0.30.0" }
 
 [dependencies.kube]
 version = "0.99.0"
