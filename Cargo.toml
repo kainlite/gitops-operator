@@ -24,7 +24,7 @@ futures = "0.3.31"
 tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread", "full", "test-util"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["json", "env-filter"] }
-anyhow = "1.0.97"
+anyhow = "1.0.98"
 serde = { version = "1.0.219", features = ["derive"] }
 k8s-openapi = { version = "0.24.0", features = ["latest"] }
 git2 = "0.20.0"
