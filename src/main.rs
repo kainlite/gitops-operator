@@ -16,6 +16,9 @@ use uuid::Uuid;
 
 type Cache = reflector::Store<Deployment>;
 
+#[global_allocator]
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 // - GET /reconcile
 #[tracing::instrument(
     name = "reconcile",
