@@ -26,7 +26,7 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["json", "env-filter"] }
 anyhow = "1.0.98"
 serde = { version = "1.0.219", features = ["derive"] }
-k8s-openapi = { version = "0.24.0", features = ["latest"] }
+k8s-openapi = { version = "0.25.0", features = ["latest"] }
 git2 = "0.20.2"
 serde_yaml = "0.9.34"
 base64 = "0.22.1"
@@ -47,7 +47,7 @@ tracing-opentelemetry = { version = "0.30.0" }
 jemallocator = "0.5.4"
 
 [dependencies.kube]
-version = "0.99.0"
+version = "1.0.0"
 features = ["runtime"]
 
 [dev-dependencies]
