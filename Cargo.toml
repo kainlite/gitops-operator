@@ -21,7 +21,7 @@ path = "src/lib.rs"
 axum = "0.8.4"
 tower-http = { version = "0.6.4", default-features = false, features = ["trace"] }
 futures = "0.3.31"
-tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread", "full", "test-util"] }
+tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread", "full", "test-util"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["json", "env-filter"] }
 anyhow = "1.0.98"
@@ -53,7 +53,7 @@ features = ["runtime"]
 [dev-dependencies]
 mockito = "1.6.1"
 wiremock = "0.6"
-tokio = { version = "1.45.0", features = ["full", "test-util", "macros", "rt-multi-thread"] }
+tokio = { version = "1.45.1", features = ["full", "test-util", "macros", "rt-multi-thread"] }
 mockall = "0.12.1"
 assert_matches = "1.5.0"
 tempfile = "3.20.0"
