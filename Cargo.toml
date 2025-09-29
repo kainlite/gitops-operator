@@ -25,7 +25,7 @@ tokio = { version = "1.47.1", features = ["macros", "rt-multi-thread", "full", "
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["json", "env-filter"] }
 anyhow = "1.0.100"
-serde = { version = "1.0.226", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
 k8s-openapi = { version = "0.26.0", features = ["latest"] }
 git2 = "0.20.2"
 serde_yaml = "0.9.34"
