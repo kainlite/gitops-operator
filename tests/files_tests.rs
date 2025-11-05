@@ -28,6 +28,7 @@ spec:
         )
     }
 
+    /// Tests that needs_patching returns true when the SHA differs from file content
     #[test]
     fn test_needs_patching_true() {
         let temp_dir = TempDir::new().unwrap();
@@ -42,6 +43,7 @@ spec:
         assert!(result, "Should need patching when SHA is different");
     }
 
+    /// Tests that needs_patching returns false when the SHA matches file content
     #[test]
     fn test_needs_patching_false() {
         let temp_dir = TempDir::new().unwrap();
@@ -56,6 +58,7 @@ spec:
         assert!(!result, "Should not need patching when SHA is the same");
     }
 
+    /// Tests successful patching of a deployment YAML file with new SHA
     #[test]
     fn test_patch_deployment_success() {
         let temp_dir = TempDir::new().unwrap();
@@ -77,6 +80,7 @@ spec:
         );
     }
 
+    /// Tests that patching fails when the deployment is already at the target SHA
     #[test]
     fn test_patch_deployment_already_updated() {
         let temp_dir = TempDir::new().unwrap();
@@ -94,6 +98,7 @@ spec:
         );
     }
 
+    /// Tests that patching fails gracefully with invalid YAML content
     #[test]
     fn test_patch_deployment_invalid_yaml() {
         let temp_dir = TempDir::new().unwrap();
@@ -107,6 +112,7 @@ spec:
         assert!(result.is_err(), "Patch should fail with invalid YAML");
     }
 
+    /// Tests that patching fails appropriately when the file doesn't exist
     #[test]
     fn test_patch_deployment_missing_file() {
         let result = patch_deployment("nonexistent/path/deployment.yaml", "test-image", "new-sha");

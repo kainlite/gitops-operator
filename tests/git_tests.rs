@@ -94,6 +94,7 @@ mod tests {
         }
     }
 
+    /// Tests that the Git signature is created with correct author information
     #[test]
     fn test_create_signature() {
         let signature = create_signature().unwrap();
@@ -101,6 +102,7 @@ mod tests {
         assert_eq!(signature.email().unwrap(), "kainlite+gitops@gmail.com");
     }
 
+    /// Tests staging and committing changes to a Git repository
     #[test]
     fn test_stage_and_push_changes() {
         let test_repo = TestRepo::new();
@@ -131,6 +133,7 @@ mod tests {
         assert_eq!(commit.message().unwrap(), "Test commit");
     }
 
+    /// Tests cloning a new repository to a fresh directory
     #[test]
     fn test_clone_or_update_repo_new() {
         // Setup source repository
@@ -172,6 +175,7 @@ mod tests {
         fs::remove_dir_all(target_dir.path()).unwrap();
     }
 
+    /// Tests updating an existing cloned repository with new changes
     #[test]
     fn test_clone_or_update_repo_existing() {
         // Setup source repository
@@ -218,6 +222,7 @@ mod tests {
         fs::remove_dir_all(target_dir.path()).unwrap();
     }
 
+    /// Tests that cloning fails appropriately with an invalid repository URL
     #[test]
     fn test_clone_or_update_repo_invalid_url() {
         let target_dir = TempDir::new().unwrap();
@@ -230,6 +235,7 @@ mod tests {
         assert!(result.is_err(), "Should fail with invalid repository URL");
     }
 
+    /// Tests retrieving the latest commit hash in both short and long formats
     #[test]
     fn test_get_latest_commit() {
         let temp_dir = TempDir::new().unwrap();
