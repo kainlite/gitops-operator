@@ -51,7 +51,7 @@ version = "2.0.1"
 features = ["runtime"]
 
 [dev-dependencies]
-mockito = "1.6.1"
+mockito = "1.7.1"
 wiremock = "0.6"
 tokio = { version = "1.48.0", features = ["full", "test-util", "macros", "rt-multi-thread"] }
 mockall = "0.12.1"
