@@ -54,7 +54,7 @@ jobs:
             type=edge,enable=true,priority=700,prefix=,suffix=,branch=$repo.default_branch
 
       - name: Rust Build Cache for Docker
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: rust-build-cache
           key: ${{ runner.os }}-${{ env.PLATFORM_PAIR }}-build-cache-${{ hashFiles('**/Cargo.toml') }}
