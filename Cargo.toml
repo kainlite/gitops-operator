@@ -21,7 +21,7 @@ path = "src/lib.rs"
 axum = "0.8.8"
 tower-http = { version = "0.6.8", default-features = false, features = ["trace"] }
 futures = "0.3.31"
-tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "full", "test-util"] }
+tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "full", "test-util"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["json", "env-filter"] }
 anyhow = "1.0.100"
@@ -35,7 +35,7 @@ tracing-log = "0.2.0"
 openssl = { version = '0.10', features = ["vendored"] }
 uuid = { version = "1.19.0", features = ["v4"] }
 reqwest = { version = "0.12.28", features = ["json", "blocking"] }
-serde_json = "1.0.148"
+serde_json = "1.0.149"
 axum-prometheus = "0.9.0"
 
 opentelemetry = { version = "0.31.0" }
@@ -53,7 +53,7 @@ features = ["runtime"]
 [dev-dependencies]
 mockito = "1.7.1"
 wiremock = "0.6"
-tokio = { version = "1.48.0", features = ["full", "test-util", "macros", "rt-multi-thread"] }
+tokio = { version = "1.49.0", features = ["full", "test-util", "macros", "rt-multi-thread"] }
 mockall = "0.14.0"
 assert_matches = "1.5.0"
 tempfile = "3.24.0"
