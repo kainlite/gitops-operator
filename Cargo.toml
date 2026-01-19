@@ -57,7 +57,7 @@ tokio = { version = "1.49.0", features = ["full", "test-util", "macros", "rt-mul
 mockall = "0.14.0"
 assert_matches = "1.5.0"
 tempfile = "3.24.0"
-tower = { version = "0.5.2", features = ["util"] }
+tower = { version = "0.5.3", features = ["util"] }
 serial_test = "3.3.1"
 
 # local testing: ignore
