@@ -1,21 +1,20 @@
 use crate::files::{needs_patching, patch_deployment};
 use crate::git::{clone_repo, commit_changes, get_latest_commit};
-use crate::notifications::send as send_notification;
-use anyhow::{Context, Error};
+use crate::notifications::HttpNotificationSender;
+use crate::registry::RegistryCheckerFactory;
+use crate::secrets::K8sSecretProvider;
+use crate::traits::{ImageChecker, ImageCheckerFactory, NotificationSender, SecretProvider};
 use axum::extract::State as AxumState;
+use axum::Json;
+use futures::future;
 use k8s_openapi::api::apps::v1::Deployment;
-use k8s_openapi::api::core::v1::Secret;
-use kube::{Api, Client, ResourceExt};
+use kube::runtime::reflector;
+use kube::ResourceExt;
 use std::collections::BTreeMap;
 use std::fs::remove_dir_all;
 use std::path::Path;
+use std::sync::Arc;
 use tracing::{error, info, warn};
-
-use crate::registry::{RegistryChecker, get_registry_auth_from_secret};
-
-use axum::Json;
-use futures::future;
-use kube::runtime::reflector;
 
 type Cache = reflector::Store<Deployment>;
 
@@ -56,6 +55,265 @@ pub struct Entry {
     pub version: String,
     #[serde(default)]
     pub config: Config,
+}
+
+/// Processor for handling deployment reconciliation with injectable dependencies
+pub struct DeploymentProcessor {
+    secret_provider: Arc<dyn SecretProvider>,
+    image_checker_factory: Arc<dyn ImageCheckerFactory>,
+    notification_sender: Arc<dyn NotificationSender>,
+}
+
+impl DeploymentProcessor {
+    /// Create a new processor with custom dependencies (for testing)
+    pub fn new(
+        secret_provider: Arc<dyn SecretProvider>,
+        image_checker_factory: Arc<dyn ImageCheckerFactory>,
+        notification_sender: Arc<dyn NotificationSender>,
+    ) -> Self {
+        Self {
+            secret_provider,
+            image_checker_factory,
+            notification_sender,
+        }
+    }
+
+    /// Create a processor with production implementations
+    pub fn production() -> Self {
+        Self {
+            secret_provider: Arc::new(K8sSecretProvider::new()),
+            image_checker_factory: Arc::new(RegistryCheckerFactory::new()),
+            notification_sender: Arc::new(HttpNotificationSender::new()),
+        }
+    }
+
+    /// Process a deployment entry
+    #[tracing::instrument(name = "deployment_processor_process", skip(self, entry), fields())]
+    pub async fn process(&self, entry: &Entry) -> State {
+        info!("Processing: {}/{}", &entry.namespace, &entry.name);
+
+        // Get notification endpoint
+        let endpoint = self.get_notifications_endpoint(entry).await;
+
+        // Get SSH key
+        let ssh_key_secret = match self
+            .secret_provider
+            .get_ssh_key(&entry.config.ssh_key_name, &entry.config.ssh_key_namespace)
+            .await
+        {
+            Ok(key) => key,
+            Err(e) => {
+                error!("Failed to get SSH key: {:?}", e);
+                return State::Failure(format!("Failed to get SSH key: {:#?}", e));
+            }
+        };
+
+        let registry_url = entry
+            .config
+            .registry_url
+            .as_deref()
+            .unwrap_or("https://index.docker.io/v1/");
+
+        // Get registry credentials
+        let registry_credentials = self
+            .secret_provider
+            .get_registry_auth(
+                entry
+                    .config
+                    .registry_secret_name
+                    .as_deref()
+                    .unwrap_or("regcred"),
+                entry
+                    .config
+                    .registry_secret_namespace
+                    .as_deref()
+                    .unwrap_or("gitops-operator"),
+                registry_url,
+            )
+            .await;
+
+        info!("Creating registry checker for: {}", registry_url);
+        let image_checker: Option<Box<dyn ImageChecker>> = match registry_credentials {
+            Ok(credentials) => {
+                match self
+                    .image_checker_factory
+                    .create(registry_url, Some(credentials))
+                    .await
+                {
+                    Ok(checker) => Some(checker),
+                    Err(e) => {
+                        error!("Failed to create image checker: {:?}", e);
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to get registry credentials: {:?}", e);
+                None
+            }
+        };
+
+        // Start process
+        info!("Performing reconciliation for: {}", &entry.name);
+        let app_repo_path = format!("/tmp/app-{}-{}/", &entry.name, &entry.config.observe_branch);
+        let manifest_repo_path = format!(
+            "/tmp/manifest-{}-{}/",
+            &entry.name, &entry.config.observe_branch
+        );
+
+        // Create concurrent clone operations
+        info!("Cloning repositories for: {}", &entry.name);
+        let app_clone = {
+            let repo = entry.config.app_repository.clone();
+            let path = app_repo_path.clone();
+            let branch = entry.config.observe_branch.clone();
+            let ssh_key_secret = ssh_key_secret.clone();
+            tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch, &ssh_key_secret))
+        };
+
+        let manifest_clone = {
+            let repo = entry.config.manifest_repository.clone();
+            let path = manifest_repo_path.clone();
+            let branch = entry.config.observe_branch.clone();
+            let ssh_key_secret = ssh_key_secret.clone();
+            tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch, &ssh_key_secret))
+        };
+
+        // Wait for both clones to complete
+        if let Err(e) = tokio::try_join!(app_clone, manifest_clone) {
+            error!("Failed to clone repositories: {:?}", e);
+        }
+
+        // Find the latest remote head
+        info!("Getting latest commit for: {}", &entry.name);
+        let new_sha = get_latest_commit(
+            Path::new(&app_repo_path),
+            &entry.config.observe_branch,
+            &entry.config.tag_type,
+            &ssh_key_secret,
+        );
+
+        let new_sha = match new_sha {
+            Ok(sha) => sha,
+            Err(e) => {
+                error!("Failed to get latest SHA: {:?}", e);
+                return State::Failure(format!("Failed to get latest SHA: {:#?}", e));
+            }
+        };
+
+        let deployment_path = format!("{}/{}", &manifest_repo_path, &entry.config.deployment_path);
+
+        if needs_patching(&deployment_path, &new_sha).unwrap_or(false) {
+            info!("Checking image: {}", &entry.config.image_name);
+            if let Some(ref checker) = image_checker {
+                if !checker
+                    .check_image(&entry.config.image_name, &new_sha)
+                    .await
+                    .unwrap_or(false)
+                {
+                    let message = format!(
+                        ":probing_cane: image: https://hub.docker.com/repository/docker/{}/tags with SHA: {} not found in registry, it is likely still building...",
+                        &entry.config.image_name, &new_sha
+                    );
+                    if let Some(ref ep) = endpoint {
+                        if let Err(e) = self.notification_sender.send(&message, ep).await {
+                            warn!("Failed to send notification: {:?}", e);
+                        } else {
+                            info!("Notification sent successfully");
+                        }
+                    }
+                    error!("{}", message);
+                    return State::Failure(message);
+                }
+            }
+
+            match patch_deployment(&deployment_path, &entry.config.image_name, &new_sha) {
+                Ok(_) => info!("File patched successfully for: {}", &entry.name),
+                Err(e) => {
+                    let _ = remove_dir_all(&manifest_repo_path);
+
+                    if let Some(ref ep) = endpoint {
+                        let message = format!(
+                            "Failed to patch deployment: {} to version: {}",
+                            &entry.name, &new_sha
+                        );
+                        if let Err(e) = self.notification_sender.send(&message, ep).await {
+                            warn!("Failed to send notification: {:?}", e);
+                        } else {
+                            info!("Notification sent successfully");
+                        }
+                    }
+
+                    error!("Failed to patch deployment: {:?}", e);
+                }
+            }
+
+            match commit_changes(&manifest_repo_path, &ssh_key_secret) {
+                Ok(_) => info!("Changes committed successfully"),
+                Err(e) => {
+                    let _ = remove_dir_all(&manifest_repo_path);
+                    error!(
+                        "Failed to commit changes, cleaning up manifests repo for next run: {:?}",
+                        e
+                    );
+                }
+            }
+
+            if let Some(ref ep) = endpoint {
+                let message = format!(
+                    "Deployment {} has been patched successfully to version: {}",
+                    &entry.name, &new_sha
+                );
+                if let Err(e) = self.notification_sender.send(&message, ep).await {
+                    warn!("Failed to send notification: {:?}", e);
+                } else {
+                    info!("Notification sent successfully");
+                }
+            }
+
+            let message = format!(
+                "Deployment: {} patched successfully to version: {}",
+                &entry.name, &new_sha
+            );
+            info!(message);
+
+            return State::Success(message);
+        } else {
+            let message = format!(
+                "Deployment: {} is up to date, proceeding to next deployment...",
+                &entry.name
+            );
+
+            info!(message);
+            return State::Success(message);
+        }
+    }
+
+    async fn get_notifications_endpoint(&self, entry: &Entry) -> Option<String> {
+        let secret_name = entry.config.notifications_secret_name.clone().unwrap_or_default();
+        if secret_name.is_empty() {
+            return None;
+        }
+
+        let namespace = entry
+            .config
+            .notifications_secret_namespace
+            .clone()
+            .unwrap_or_else(|| "gitops-operator".to_string());
+
+        match self
+            .secret_provider
+            .get_notification_endpoint(&secret_name, &namespace)
+            .await
+        {
+            Ok(endpoint) if !endpoint.is_empty() => Some(endpoint),
+            Ok(_) => None,
+            Err(e) => {
+                warn!("Failed to get notifications secret: {:?}", e);
+                None
+            }
+        }
+    }
 }
 
 impl Entry {
@@ -156,247 +414,16 @@ impl Entry {
         })
     }
 
-    async fn get_ssh_key(self) -> Result<String, Error> {
-        let client = Client::try_default().await?;
-        let secrets: Api<Secret> = Api::namespaced(client, &self.config.ssh_key_namespace);
-        let secret = secrets.get(&self.config.ssh_key_name).await?;
-
-        let secret_data = secret.data.context("Failed to read the data section")?;
-
-        let encoded_key = secret_data
-        .get("ssh-privatekey")
-        .context("Failed to read field: ssh-privatekey in data, consider recreating the secret with kubectl create secret generic name --from-file=ssh-privatekey=/path")?;
-
-        let key_bytes = encoded_key.0.clone();
-
-        String::from_utf8(key_bytes).context("Failed to convert key to string")
-    }
-
-    // TODO: keep refactoring this and the next fn and making it more rusty
-    async fn get_notifications_secret(name: &str, namespace: &str) -> Result<String, Error> {
-        if name.is_empty() {
-            return Ok(String::new());
-        }
-
-        let client = Client::try_default().await?;
-        let secrets: Api<Secret> = Api::namespaced(client, namespace);
-        let secret = secrets.get(name).await?;
-
-        let secret_data = secret.data.context("Failed to read the data section")?;
-
-        let encoded_url = secret_data
-        .get("webhook-url")
-        .context("Failed to read field: webhook-url in data, consider recreating the secret with kubectl create secret generic webhook-secret-name -n your_namespace --from-literal=webhook-url=https://hooks.sl...")?;
-
-        let bytes = encoded_url.0.clone();
-
-        String::from_utf8(bytes).context("Failed to convert key to string")
-    }
-
-    async fn get_notifications_endpoint(&self) -> Option<String> {
-        match Entry::get_notifications_secret(
-            &self
-                .config
-                .notifications_secret_name
-                .clone()
-                .unwrap_or_default(),
-            &self
-                .config
-                .notifications_secret_namespace
-                .clone()
-                .unwrap_or("gitops-operator".to_string()),
-        )
-        .await
-        {
-            Ok(endpoint) => Some(endpoint),
-            Err(e) => {
-                warn!("Failed to get notifications secret: {:?}", e);
-                None
-            }
-        }
-    }
-
+    /// Process deployment using the production dependencies
     #[tracing::instrument(name = "process_deployment", skip(self), fields())]
     pub async fn process_deployment(self) -> State {
-        info!("Processing: {}/{}", &self.namespace, &self.name);
+        let processor = DeploymentProcessor::production();
+        processor.process(&self).await
+    }
 
-        let endpoint = &self.get_notifications_endpoint().await;
-
-        let ssh_key_secret = match self.clone().get_ssh_key().await {
-            Ok(key) => key,
-            Err(e) => {
-                error!("Failed to get SSH key: {:?}", e);
-                return State::Failure(format!("Failed to get SSH key: {:#?}", e));
-            }
-        };
-
-        let registry_url = self
-            .config
-            .registry_url
-            .as_deref()
-            .unwrap_or("https://index.docker.io/v1/");
-
-        let registry_credentials = get_registry_auth_from_secret(
-            self.config
-                .registry_secret_name
-                .as_deref()
-                .unwrap_or("regcred"),
-            self.config
-                .registry_secret_namespace
-                .as_deref()
-                .unwrap_or("gitops-operator"),
-            registry_url,
-        )
-        .await;
-
-        info!("Creating registry checker for: {}", registry_url);
-        let registry_checker = match registry_credentials {
-            Ok(credentials) => {
-                RegistryChecker::new(registry_url.to_string(), Some(credentials.to_string())).await
-            }
-            Err(e) => {
-                error!("Failed to get registry credentials: {:?}", e);
-                Err(e)
-            }
-        };
-
-        // Start process
-        info!("Performing reconciliation for: {}", &self.name);
-        let app_repo_path = format!("/tmp/app-{}-{}/", &self.name, &self.config.observe_branch);
-        let manifest_repo_path = format!(
-            "/tmp/manifest-{}-{}/",
-            &self.name, &self.config.observe_branch
-        );
-
-        // Create concurrent clone operations
-        info!("Cloning repositories for: {}", &self.name);
-        let app_clone = {
-            let repo = self.config.app_repository.clone();
-            let path = app_repo_path.clone();
-            let branch = self.config.observe_branch.clone();
-            let ssh_key_secret = ssh_key_secret.clone();
-            tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch, &ssh_key_secret))
-        };
-
-        let manifest_clone = {
-            let repo = self.config.manifest_repository.clone();
-            let path = manifest_repo_path.clone();
-            let branch = self.config.observe_branch.clone();
-            let ssh_key_secret = ssh_key_secret.clone();
-            tokio::task::spawn_blocking(move || clone_repo(&repo, &path, &branch, &ssh_key_secret))
-        };
-
-        // Wait for both clones to complete
-        if let Err(e) = tokio::try_join!(app_clone, manifest_clone) {
-            error!("Failed to clone repositories: {:?}", e);
-        }
-
-        // Find the latest remote head
-        info!("Getting latest commit for: {}", &self.name);
-        let new_sha = get_latest_commit(
-            Path::new(&app_repo_path),
-            &self.config.observe_branch,
-            &self.config.tag_type,
-            &ssh_key_secret,
-        );
-
-        let new_sha = match new_sha {
-            Ok(sha) => sha,
-            Err(e) => {
-                error!("Failed to get latest SHA: {:?}", e);
-                return State::Failure(format!("Failed to get latest SHA: {:#?}", e));
-            }
-        };
-
-        let deployment_path = format!("{}/{}", &manifest_repo_path, &self.config.deployment_path);
-
-        if needs_patching(&deployment_path, &new_sha).unwrap_or(false) {
-            info!("Checking image: {}", &self.config.image_name);
-            if registry_checker.is_ok()
-                && !registry_checker
-                    .expect("Failed to create instance of registry checker")
-                    .check_image(&self.config.image_name, &new_sha)
-                    .await
-                    .unwrap_or(false)
-            {
-                let message = format!(
-                    ":probing_cane: image: https://hub.docker.com/repository/docker/{}/tags with SHA: {} not found in registry, it is likely still building...",
-                    &self.config.image_name, &new_sha
-                );
-                if endpoint.is_some() {
-                    match send_notification(&message, endpoint.as_deref()).await {
-                        Ok(_) => info!("Notification sent successfully"),
-                        Err(e) => {
-                            warn!("Failed to send notification: {:?}", e);
-                        }
-                    }
-                }
-                error!("{}", message);
-                return State::Failure(message);
-            }
-
-            match patch_deployment(&deployment_path, &self.config.image_name, &new_sha) {
-                Ok(_) => info!("File patched successfully for: {}", &self.name),
-                Err(e) => {
-                    let _ = remove_dir_all(&manifest_repo_path);
-
-                    if endpoint.is_some() {
-                        let message = format!(
-                            "Failed to patch deployment: {} to version: {}",
-                            &self.name, &new_sha
-                        );
-                        match send_notification(&message, endpoint.as_deref()).await {
-                            Ok(_) => info!("Notification sent successfully"),
-                            Err(e) => {
-                                warn!("Failed to send notification: {:?}", e);
-                            }
-                        }
-                    }
-
-                    error!("Failed to patch deployment: {:?}", e);
-                }
-            }
-
-            match commit_changes(&manifest_repo_path, &ssh_key_secret) {
-                Ok(_) => info!("Changes committed successfully"),
-                Err(e) => {
-                    let _ = remove_dir_all(&manifest_repo_path);
-                    error!(
-                        "Failed to commit changes, cleaning up manifests repo for next run: {:?}",
-                        e
-                    );
-                }
-            }
-
-            if endpoint.is_some() {
-                let message = format!(
-                    "Deployment {} has been patched successfully to version: {}",
-                    &self.name, &new_sha
-                );
-                match send_notification(&message, endpoint.as_deref()).await {
-                    Ok(_) => info!("Notification sent successfully"),
-                    Err(e) => {
-                        warn!("Failed to send notification: {:?}", e);
-                    }
-                }
-            }
-
-            let message = format!(
-                "Deployment: {} patched successfully to version: {}",
-                &self.name, &new_sha
-            );
-            info!(message);
-
-            return State::Success(message);
-        } else {
-            let message = format!(
-                "Deployment: {} is up to date, proceeding to next deployment...",
-                &self.name
-            );
-
-            info!(message);
-            return State::Success(message);
-        }
+    /// Process deployment with a custom processor (for testing)
+    pub async fn process_deployment_with(&self, processor: &DeploymentProcessor) -> State {
+        processor.process(self).await
     }
 
     pub async fn reconcile(AxumState(store): AxumState<Cache>) -> Json<Vec<State>> {

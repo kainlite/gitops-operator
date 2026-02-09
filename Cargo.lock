@@ -690,6 +690,7 @@ version = "0.8.3"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "async-trait",
  "axum",
  "axum-prometheus",
  "base64",

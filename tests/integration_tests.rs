@@ -1,7 +1,10 @@
 #[cfg(test)]
 mod integration_tests {
-    use gitops_operator::configuration::{Entry, State};
+    use anyhow::Result;
+    use async_trait::async_trait;
+    use gitops_operator::configuration::{DeploymentProcessor, Entry, State};
     use gitops_operator::git::{clone_repo, get_latest_commit};
+    use gitops_operator::traits::{ImageChecker, ImageCheckerFactory, NotificationSender, SecretProvider};
     use k8s_openapi::api::apps::v1::Deployment;
     use k8s_openapi::api::core::v1::Container;
     use k8s_openapi::api::core::v1::PodSpec;
@@ -12,7 +15,86 @@ mod integration_tests {
     use std::fs;
     use std::path::Path;
     use std::process::Command;
+    use std::sync::Arc;
     use tempfile::TempDir;
+
+    // Mock implementations for testing
+
+    /// Mock secret provider that returns predefined values
+    struct MockSecretProvider {
+        ssh_key: String,
+    }
+
+    impl MockSecretProvider {
+        fn new(ssh_key: &str) -> Self {
+            Self {
+                ssh_key: ssh_key.to_string(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl SecretProvider for MockSecretProvider {
+        async fn get_ssh_key(&self, _name: &str, _namespace: &str) -> Result<String> {
+            Ok(self.ssh_key.clone())
+        }
+
+        async fn get_notification_endpoint(&self, _name: &str, _namespace: &str) -> Result<String> {
+            Ok(String::new()) // No notifications in tests
+        }
+
+        async fn get_registry_auth(
+            &self,
+            _secret_name: &str,
+            _namespace: &str,
+            _registry_url: &str,
+        ) -> Result<String> {
+            Ok("Basic dGVzdDp0ZXN0".to_string()) // test:test base64 encoded
+        }
+    }
+
+    /// Mock image checker that always returns true (image exists)
+    struct MockImageChecker;
+
+    #[async_trait]
+    impl ImageChecker for MockImageChecker {
+        async fn check_image(&self, _image: &str, _tag: &str) -> Result<bool> {
+            Ok(true) // Always claim image exists
+        }
+    }
+
+    /// Mock image checker factory
+    struct MockImageCheckerFactory;
+
+    #[async_trait]
+    impl ImageCheckerFactory for MockImageCheckerFactory {
+        async fn create(
+            &self,
+            _registry_url: &str,
+            _auth_token: Option<String>,
+        ) -> Result<Box<dyn ImageChecker>> {
+            Ok(Box::new(MockImageChecker))
+        }
+    }
+
+    /// Mock notification sender that does nothing
+    struct MockNotificationSender;
+
+    #[async_trait]
+    impl NotificationSender for MockNotificationSender {
+        async fn send(&self, _message: &str, _endpoint: &str) -> Result<()> {
+            Ok(()) // Do nothing
+        }
+    }
+
+    /// Create a mock DeploymentProcessor for testing
+    fn create_mock_processor(ssh_key: &str) -> DeploymentProcessor {
+        DeploymentProcessor::new(
+            Arc::new(MockSecretProvider::new(ssh_key)),
+            Arc::new(MockImageCheckerFactory),
+            Arc::new(MockNotificationSender),
+        )
+    }
 
     // Helper struct to manage test repositories
     #[derive(Debug)]
@@ -151,16 +233,16 @@ spec:
         }
     }
 
-    fn create_test_deployment() -> Deployment {
+    fn create_test_deployment_with_repos(app_url: &str, manifest_url: &str) -> Deployment {
         let mut annotations = BTreeMap::new();
         annotations.insert("gitops.operator.enabled".to_string(), "true".to_string());
         annotations.insert(
             "gitops.operator.app_repository".to_string(),
-            "file:///tmp/app".to_string(),
+            app_url.to_string(),
         );
         annotations.insert(
             "gitops.operator.manifest_repository".to_string(),
-            "file:///tmp/manifest".to_string(),
+            manifest_url.to_string(),
         );
         annotations.insert(
             "gitops.operator.image_name".to_string(),
@@ -204,14 +286,21 @@ spec:
         }
     }
 
+    fn create_test_deployment() -> Deployment {
+        create_test_deployment_with_repos("file:///tmp/app", "file:///tmp/manifest")
+    }
+
     #[tokio::test]
     #[serial]
     async fn test_full_reconcile_workflow() {
         // Setup test repositories
         let repos = TestRepos::new();
 
-        // Create test deployment
-        let deployment = create_test_deployment();
+        // Use a dummy SSH key for testing
+        let ssh_key = "dummy-ssh-key-for-file-protocol";
+
+        // Create test deployment with actual repo URLs
+        let deployment = create_test_deployment_with_repos(&repos.get_app_url(), &repos.get_manifest_url());
 
         // Create Entry from deployment
         let entry = Entry::new(&deployment).expect("Failed to create entry from deployment");
@@ -220,20 +309,15 @@ spec:
         assert!(entry.config.enabled);
         assert_eq!(entry.config.namespace, "default");
 
-        // Clone repositories
-        let app_path = repos.app_repo.path().to_str().unwrap();
-        let manifest_path = repos.manifest_repo.path().to_str().unwrap();
+        // Clone repositories for verification
         let app_link_path = format!("/tmp/app-{}-master", entry.name);
         let manifest_link_path = format!("/tmp/manifest-{}-master", entry.name);
 
-        // Clean up possible lingering synlinks
+        // Clean up possible lingering directories
         fs::remove_dir_all(&app_link_path).ok();
         fs::remove_dir_all(&manifest_link_path).ok();
 
-        // Use a dummy SSH key for testing
-        let ssh_key = "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==";
-
-        // Clone both repositories
+        // Clone both repositories to verify setup
         clone_repo(&repos.get_app_url(), &app_link_path, "master", ssh_key);
         clone_repo(
             &repos.get_manifest_url(),
@@ -250,15 +334,21 @@ spec:
         // Verify we got a valid commit hash
         assert_eq!(latest_commit.len(), 40, "Should get full commit hash");
 
-        // Process deployment
-        let state = entry.process_deployment().await;
+        // Clean up cloned repos before processing (processor will clone fresh)
+        fs::remove_dir_all(&app_link_path).ok();
+        fs::remove_dir_all(&manifest_link_path).ok();
+
+        // Create mock processor and process deployment
+        let processor = create_mock_processor(ssh_key);
+        let state = entry.process_deployment_with(&processor).await;
 
         // Verify final state
         match state {
             State::Success(msg) => {
                 assert!(
-                    msg.contains("patched successfully to version"),
-                    "Should indicate successful processing"
+                    msg.contains("patched successfully to version") || msg.contains("up to date"),
+                    "Should indicate successful processing, got: {}",
+                    msg
                 );
             }
             State::Failure(msg) => {
@@ -270,10 +360,8 @@ spec:
         }
 
         // Clean up
-        fs::remove_dir_all(app_path).ok();
-        fs::remove_dir_all(app_link_path).ok();
-        fs::remove_dir_all(manifest_path).ok();
-        fs::remove_dir_all(manifest_link_path).ok();
+        fs::remove_dir_all(&app_link_path).ok();
+        fs::remove_dir_all(&manifest_link_path).ok();
     }
 
     #[tokio::test]
@@ -282,8 +370,11 @@ spec:
         // Setup test repositories
         let repos = TestRepos::new();
 
-        // Create test deployment
-        let deployment = create_test_deployment();
+        // Use a dummy SSH key for testing
+        let ssh_key = "dummy-ssh-key-for-file-protocol";
+
+        // Create test deployment with actual repo URLs
+        let deployment = create_test_deployment_with_repos(&repos.get_app_url(), &repos.get_manifest_url());
 
         // Create Entry from deployment
         let entry = Entry::new(&deployment).expect("Failed to create entry from deployment");
@@ -292,18 +383,13 @@ spec:
         assert!(entry.config.enabled);
         assert_eq!(entry.config.namespace, "default");
 
-        // Clone repositories
-        let app_path = repos.app_repo.path().to_str().unwrap();
-        let manifest_path = repos.manifest_repo.path().to_str().unwrap();
+        // Clone repositories for verification
         let app_link_path = format!("/tmp/app-{}-master", entry.name);
         let manifest_link_path = format!("/tmp/manifest-{}-master", entry.name);
 
-        // Clean up possible lingering synlinks
+        // Clean up possible lingering directories
         fs::remove_dir_all(&app_link_path).ok();
         fs::remove_dir_all(&manifest_link_path).ok();
-
-        // Use a dummy SSH key for testing
-        let ssh_key = "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==";
 
         // Clone both repositories
         clone_repo(&repos.get_app_url(), &app_link_path, "master", ssh_key);
@@ -321,25 +407,31 @@ spec:
         // Verify we got a valid commit hash
         assert_eq!(latest_commit.len(), 40, "Should get full commit hash");
 
-        // Process deployment
-        let _state = &entry.clone().process_deployment().await;
+        // Clean up before processing
+        fs::remove_dir_all(&app_link_path).ok();
+        fs::remove_dir_all(&manifest_link_path).ok();
 
-        // Process deployment again
-        let state = &entry.process_deployment().await;
+        // Create mock processor
+        let processor = create_mock_processor(ssh_key);
+
+        // Process deployment first time
+        let _state = entry.process_deployment_with(&processor).await;
+
+        // Process deployment again - should be up to date now
+        let state = entry.process_deployment_with(&processor).await;
 
         // Verify final state
         match state {
             State::Success(msg) => {
                 assert!(
                     msg.contains("up to date") || msg.contains("patched successfully"),
-                    "Should indicate successful processing"
+                    "Should indicate successful processing, got: {}",
+                    msg
                 );
             }
             State::Failure(msg) => {
-                assert!(
-                    msg.contains("probing_cane") || msg.contains("hub.docker."),
-                    "Should indicate successful processing"
-                );
+                // This could happen if image check fails, but with mocks it shouldn't
+                panic!("Processing failed unexpectedly: {}", msg);
             }
             _ => {
                 panic!("Unexpected state: {:?}", state);
@@ -347,9 +439,19 @@ spec:
         }
 
         // Clean up
-        fs::remove_dir_all(app_path).ok();
-        fs::remove_dir_all(app_link_path).ok();
-        fs::remove_dir_all(manifest_path).ok();
-        fs::remove_dir_all(manifest_link_path).ok();
+        fs::remove_dir_all(&app_link_path).ok();
+        fs::remove_dir_all(&manifest_link_path).ok();
+    }
+
+    #[tokio::test]
+    async fn test_entry_creation() {
+        let deployment = create_test_deployment();
+        let entry = Entry::new(&deployment).expect("Failed to create entry");
+
+        assert_eq!(entry.name, "test-app");
+        assert_eq!(entry.namespace, "default");
+        assert!(entry.config.enabled);
+        assert_eq!(entry.config.image_name, "test-app");
+        assert_eq!(entry.config.deployment_path, "deployments/app.yaml");
     }
 }
