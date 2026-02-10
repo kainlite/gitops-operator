@@ -5,11 +5,14 @@ ARG TARGETPLATFORM
 WORKDIR /volume
 
 # Install cross-compilation tools for musl
-RUN apt-get update && apt-get install -y \
-    musl-tools wget \
-    && wget https://musl.cc/aarch64-linux-musl-cross.tgz \
-    && tar -xf aarch64-linux-musl-cross.tgz -C /usr \
-    && rm aarch64-linux-musl-cross.tgz
+# Try multiple mirrors since musl.cc can be unreliable
+RUN apt-get update && apt-get install -y musl-tools wget ca-certificates \
+    && (wget --timeout=30 -q https://more.musl.cc/11/x86_64-linux-musl/aarch64-linux-musl-cross.tgz \
+        -O /tmp/aarch64-linux-musl-cross.tgz \
+        || wget --timeout=30 -q https://musl.cc/aarch64-linux-musl-cross.tgz \
+        -O /tmp/aarch64-linux-musl-cross.tgz) \
+    && tar -xf /tmp/aarch64-linux-musl-cross.tgz -C /usr \
+    && rm /tmp/aarch64-linux-musl-cross.tgz
 
 # Install cross-compilation target
 RUN rustup target add aarch64-unknown-linux-musl x86_64-unknown-linux-musl
