@@ -1,4 +1,6 @@
+use crate::traits::{ImageChecker, ImageCheckerFactory};
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use k8s_openapi::api::core::v1::Secret;
 use kube::{Client as K8sClient, api::Api};
@@ -216,4 +218,41 @@ pub async fn get_registry_auth_from_secret(
         .ok_or_else(|| anyhow::anyhow!("Auth not found for registry {}", registry_url))?;
 
     Ok(format!("Basic {}", auth))
+}
+
+/// Implement the ImageChecker trait for RegistryChecker
+#[async_trait]
+impl ImageChecker for RegistryChecker {
+    async fn check_image(&self, image: &str, tag: &str) -> Result<bool> {
+        // Delegate to the existing method
+        RegistryChecker::check_image(self, image, tag).await
+    }
+}
+
+/// Factory for creating RegistryChecker instances
+#[derive(Clone)]
+pub struct RegistryCheckerFactory;
+
+impl RegistryCheckerFactory {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for RegistryCheckerFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl ImageCheckerFactory for RegistryCheckerFactory {
+    async fn create(
+        &self,
+        registry_url: &str,
+        auth_token: Option<String>,
+    ) -> Result<Box<dyn ImageChecker>> {
+        let checker = RegistryChecker::new(registry_url.to_string(), auth_token).await?;
+        Ok(Box::new(checker))
+    }
 }
