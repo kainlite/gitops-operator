@@ -1,39 +1,22 @@
-FROM --platform=$BUILDPLATFORM clux/muslrust:stable AS builder
-
-ARG TARGETPLATFORM
+FROM rust:alpine AS builder
 
 WORKDIR /volume
 
-# Install cross-compilation tools for musl
-RUN apt-get update && apt-get install -y \
-    musl-tools wget \
-    && wget https://musl.cc/aarch64-linux-musl-cross.tgz \
-    && tar -xf aarch64-linux-musl-cross.tgz -C /usr \
-    && rm aarch64-linux-musl-cross.tgz
+# Install build dependencies for alpine/musl
+RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig git perl make
 
-# Install cross-compilation target
-RUN rustup target add aarch64-unknown-linux-musl x86_64-unknown-linux-musl
+# Set OpenSSL to use static linking
+ENV OPENSSL_STATIC=1
+ENV OPENSSL_LIB_DIR=/usr/lib
+ENV OPENSSL_INCLUDE_DIR=/usr/include
 
 COPY Cargo.* .
 COPY src src
 
 RUN --mount=type=cache,target=/volume/target \
     --mount=type=cache,target=/root/.cargo/registry \
-    if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
-        ARCHITECTURE=x86_64; \
-        cargo build --release --bin gitops-operator --target x86_64-unknown-linux-musl; \
-    elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
-        ARCHITECTURE=aarch64; \
-        PATH="/usr/aarch64-linux-musl-cross/bin:$PATH" \
-        CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc \
-        AR_aarch64_unknown_linux_musl=aarch64-linux-musl-ar \
-        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc \
-        cargo build --release --bin gitops-operator --target aarch64-unknown-linux-musl; \
-    else \
-        ARCHITECTURE=x86_64; \
-        cargo build --release --bin gitops-operator --target x86_64-unknown-linux-musl; \
-    fi && \
-    mv /volume/target/$ARCHITECTURE-unknown-linux-musl/release/gitops-operator .
+    cargo build --release --bin gitops-operator \
+    && cp /volume/target/release/gitops-operator .
 
 FROM cgr.dev/chainguard/static
 
