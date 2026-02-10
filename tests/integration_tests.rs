@@ -4,7 +4,9 @@ mod integration_tests {
     use async_trait::async_trait;
     use gitops_operator::configuration::{DeploymentProcessor, Entry, State};
     use gitops_operator::git::{clone_repo, get_latest_commit};
-    use gitops_operator::traits::{ImageChecker, ImageCheckerFactory, NotificationSender, SecretProvider};
+    use gitops_operator::traits::{
+        ImageChecker, ImageCheckerFactory, NotificationSender, SecretProvider,
+    };
     use k8s_openapi::api::apps::v1::Deployment;
     use k8s_openapi::api::core::v1::Container;
     use k8s_openapi::api::core::v1::PodSpec;
@@ -300,7 +302,8 @@ spec:
         let ssh_key = "dummy-ssh-key-for-file-protocol";
 
         // Create test deployment with actual repo URLs
-        let deployment = create_test_deployment_with_repos(&repos.get_app_url(), &repos.get_manifest_url());
+        let deployment =
+            create_test_deployment_with_repos(&repos.get_app_url(), &repos.get_manifest_url());
 
         // Create Entry from deployment
         let entry = Entry::new(&deployment).expect("Failed to create entry from deployment");
@@ -374,7 +377,8 @@ spec:
         let ssh_key = "dummy-ssh-key-for-file-protocol";
 
         // Create test deployment with actual repo URLs
-        let deployment = create_test_deployment_with_repos(&repos.get_app_url(), &repos.get_manifest_url());
+        let deployment =
+            create_test_deployment_with_repos(&repos.get_app_url(), &repos.get_manifest_url());
 
         // Create Entry from deployment
         let entry = Entry::new(&deployment).expect("Failed to create entry from deployment");

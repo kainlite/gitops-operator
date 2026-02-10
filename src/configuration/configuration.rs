@@ -4,12 +4,12 @@ use crate::notifications::HttpNotificationSender;
 use crate::registry::RegistryCheckerFactory;
 use crate::secrets::K8sSecretProvider;
 use crate::traits::{ImageChecker, ImageCheckerFactory, NotificationSender, SecretProvider};
-use axum::extract::State as AxumState;
 use axum::Json;
+use axum::extract::State as AxumState;
 use futures::future;
 use k8s_openapi::api::apps::v1::Deployment;
-use kube::runtime::reflector;
 use kube::ResourceExt;
+use kube::runtime::reflector;
 use std::collections::BTreeMap;
 use std::fs::remove_dir_all;
 use std::path::Path;
@@ -290,7 +290,11 @@ impl DeploymentProcessor {
     }
 
     async fn get_notifications_endpoint(&self, entry: &Entry) -> Option<String> {
-        let secret_name = entry.config.notifications_secret_name.clone().unwrap_or_default();
+        let secret_name = entry
+            .config
+            .notifications_secret_name
+            .clone()
+            .unwrap_or_default();
         if secret_name.is_empty() {
             return None;
         }
