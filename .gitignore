@@ -6,3 +6,4 @@ tests/default_**
 *.html
 .git
 migration.txt
+.claude
