@@ -101,8 +101,6 @@ mod integration_tests {
     // Helper struct to manage test repositories
     #[derive(Debug)]
     struct TestRepos {
-        app_repo: TempDir,
-        manifest_repo: TempDir,
         app_bare: TempDir,
         manifest_bare: TempDir,
     }
@@ -120,8 +118,6 @@ mod integration_tests {
             let manifest_bare = Self::create_bare_clone(&manifest_repo);
 
             TestRepos {
-                app_repo,
-                manifest_repo,
                 app_bare,
                 manifest_bare,
             }

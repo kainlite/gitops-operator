@@ -13,26 +13,25 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          - linux/amd64
-          - linux/arm64
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Prepare
         run: |
           platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV   
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
 
       - uses: actions/checkout@v6
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@v3
@@ -65,12 +64,24 @@ jobs:
           cache-source: rust-build-cache
 
       - name: Docker login
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Build image
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: false
+
       - name: Build and push by digest
+        if: github.event_name != 'pull_request'
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -78,19 +89,17 @@ jobs:
           platforms: ${{ matrix.platform }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          push: true
           outputs: type=image,"name=${{ env.DOCKERHUB_REPO }}",push-by-digest=true,name-canonical=true,push=true
-          build-args: |
-            BUILDPLATFORM=${{ matrix.platform }}
-            TARGETPLATFORM=${{ matrix.platform }}
 
       - name: Export digest
+        if: github.event_name != 'pull_request'
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"          
+          touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload digest
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
@@ -105,6 +114,7 @@ jobs:
 
   merge:
     runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request'
     needs:
       - build
     steps:
