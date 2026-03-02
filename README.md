@@ -35,12 +35,14 @@ stern -o raw -n gitops-operator gitops | jq -R '. as $line | try (fromjson | .ti
 stern -o raw -n gitops-operator gitops | bunyan
 ```
 
-### Observability stack (jaegger and prometheus)
+### Observability stack (tempo, prometheus, and grafana)
 To run the observability stack run (note that these run on the host's ports due to we need to connect to the cluster
 using the local configuration):
 ```
 docker compose up -d
 ```
+Traces are collected by Tempo (OTLP on port 4317/4318), queryable via Grafana at `http://localhost:3000`.
+Prometheus is available at `http://localhost:9090` and Tempo API at `http://localhost:3200`.
 
 ### Running the application
 To observe a deployment just add these annotations to your configuration file (this is what I'm using to self-observe

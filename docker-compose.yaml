@@ -1,14 +1,13 @@
 services:
-  jaeger:
+  tempo:
     network_mode: "host"
-    image: jaegertracing/jaeger:${JAEGER_IMAGE_TAG:-latest}
+    image: grafana/tempo:latest
     volumes:
-      - "./files/config-spm.yaml:/etc/jaeger/config.yaml"
-    command: ["--config", "/etc/jaeger/config.yaml"]
+      - "./files/tempo.yaml:/etc/tempo/tempo.yaml"
+      - "tempo-data:/var/tempo"
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
     ports:
-      - "16686:16686"
-      - "8888:8888"
-      - "8889:8889"
+      - "3200:3200"
       - "4317:4317"
       - "4318:4318"
 
@@ -17,6 +16,9 @@ services:
     image: prom/prometheus:v3.1.0
     volumes:
       - "./files/prometheus.yaml:/etc/prometheus/prometheus.yml"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.enable-remote-write-receiver"
     ports:
       - "9090:9090"
 
@@ -25,5 +27,14 @@ services:
     image: grafana/grafana-oss
     container_name: grafana
     restart: unless-stopped
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - "./files/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml"
     ports:
      - '3000:3000'
+
+volumes:
+  tempo-data:
