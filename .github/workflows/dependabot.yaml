@@ -5,7 +5,6 @@ permissions:
   contents: write
   packages: write
   pull-requests: write
-  workflows: write
 
 jobs:
   dependabot:
