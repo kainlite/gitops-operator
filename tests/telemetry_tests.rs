@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use gitops_operator::telemetry::{init_subscriber, resource};
+    use gitops_operator::telemetry::{init_subscriber, otlp_endpoint, resource};
     use opentelemetry::global;
     use std::sync::Once;
     use std::time::Duration;
@@ -110,6 +110,21 @@ mod tests {
         // Verify we can create spans after initialization
         let span = tracing::info_span!("test_span");
         assert!(!span.is_disabled()); // Since we're in a test environment
+    }
+
+    #[test]
+    fn test_otlp_endpoint_default() {
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT") };
+        assert_eq!(otlp_endpoint(), "http://tempo.monitoring:4317");
+    }
+
+    #[test]
+    fn test_otlp_endpoint_from_env() {
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317") };
+        assert_eq!(otlp_endpoint(), "http://localhost:4317");
+        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT") };
     }
 
     #[tokio::test(flavor = "multi_thread")]

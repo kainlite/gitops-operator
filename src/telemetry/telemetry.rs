@@ -1,6 +1,6 @@
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 
-use opentelemetry_otlp::{LogExporter, MetricExporter};
+use opentelemetry_otlp::{LogExporter, MetricExporter, WithExportConfig};
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 
 use opentelemetry::global;
@@ -17,6 +17,13 @@ use tracing_bunyan_formatter::BunyanFormattingLayer;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use opentelemetry_sdk::propagation::TraceContextPropagator;
+
+const DEFAULT_OTLP_ENDPOINT: &str = "http://tempo.monitoring:4317";
+
+pub fn otlp_endpoint() -> String {
+    std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+        .unwrap_or_else(|_| DEFAULT_OTLP_ENDPOINT.to_string())
+}
 
 pub fn resource(name: String) -> Resource {
     Resource::builder()
@@ -35,7 +42,12 @@ pub fn init_subscriber(name: String, env_filter: String) {
     let formatting_layer = BunyanFormattingLayer::new(name.clone(), std::io::stdout);
 
     // Set up OpenTelemetry tracer
-    let span_exporter = SpanExporter::builder().with_tonic().build().unwrap();
+    let endpoint = otlp_endpoint();
+    let span_exporter = SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(&endpoint)
+        .build()
+        .unwrap();
 
     let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
         .with_batch_exporter(span_exporter)
@@ -56,6 +68,7 @@ pub fn init_subscriber(name: String, env_filter: String) {
     // Metrics setup
     let metrics_exporter = MetricExporter::builder()
         .with_tonic()
+        .with_endpoint(&endpoint)
         .with_temporality(opentelemetry_sdk::metrics::Temporality::default())
         .build()
         .unwrap();
@@ -74,6 +87,7 @@ pub fn init_subscriber(name: String, env_filter: String) {
     // Logs setup
     let log_exporter = LogExporter::builder()
         .with_tonic()
+        .with_endpoint(&endpoint)
         .build()
         .expect("Failed to create log exporter");
 
