@@ -1,7 +1,4 @@
-use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
-
-use opentelemetry_otlp::{LogExporter, MetricExporter, WithExportConfig};
-use opentelemetry_sdk::logs::SdkLoggerProvider;
+use opentelemetry_otlp::{MetricExporter, WithExportConfig};
 
 use opentelemetry::global;
 use opentelemetry::trace::TracerProvider;
@@ -84,26 +81,11 @@ pub fn init_subscriber(name: String, env_filter: String) {
 
     global::set_meter_provider(meter_provider);
 
-    // Logs setup
-    let log_exporter = LogExporter::builder()
-        .with_tonic()
-        .with_endpoint(&endpoint)
-        .build()
-        .expect("Failed to create log exporter");
-
-    let log_provider = SdkLoggerProvider::builder()
-        .with_resource(resource(name.clone()))
-        .with_batch_exporter(log_exporter)
-        .build();
-
-    let otel_log_layer = OpenTelemetryTracingBridge::new(&log_provider);
-
     // Create a tracing-subscriber registry with layers
     let registry = tracing_subscriber::registry()
         .with(env_filter)
         .with(telemetry_layer)
-        .with(formatting_layer)
-        .with(otel_log_layer);
+        .with(formatting_layer);
 
     // Install the subscriber as global default
     registry.init();
