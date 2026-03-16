@@ -1,6 +1,6 @@
 [package]
 name = "gitops-operator"
-version = "0.8.3"
+version = "0.9.0"
 authors = ["Gabriel Garrido <kainlite@gmail.com>"]
 edition = "2024"
 license = "Apache-2.0"
