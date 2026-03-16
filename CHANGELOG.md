@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/kainlite/gitops-operator/compare/v0.9.1...v0.9.2) (2026-03-16)
+
+
+### Bug Fixes
+
+* prepend registry host to container image when using non-Docker Hub registries ([091f1e8](https://github.com/kainlite/gitops-operator/commit/091f1e85876c380dd59437aeb34317e8e19705cd))
+
 ## [0.9.1](https://github.com/kainlite/gitops-operator/compare/v0.9.0...v0.9.1) (2026-03-16)
 
 
