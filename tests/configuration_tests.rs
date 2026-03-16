@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use gitops_operator::configuration::{Entry, State};
+    use gitops_operator::configuration::{Entry, State, build_container_image};
     use k8s_openapi::api::apps::v1::Deployment;
     use std::collections::BTreeMap;
 
@@ -528,5 +528,37 @@ mod tests {
 
         let entry = Entry::new(&deployment);
         assert!(entry.is_none());
+    }
+
+    #[test]
+    fn test_build_container_image_docker_hub() {
+        let image =
+            build_container_image("https://index.docker.io/v1/", "kainlite/gitops-operator");
+        assert_eq!(image, "kainlite/gitops-operator");
+    }
+
+    #[test]
+    fn test_build_container_image_ghcr() {
+        let image = build_container_image("https://ghcr.io", "kainlite/gitops-operator");
+        assert_eq!(image, "ghcr.io/kainlite/gitops-operator");
+    }
+
+    #[test]
+    fn test_build_container_image_custom_registry() {
+        let image = build_container_image("https://registry.example.com", "myapp/backend");
+        assert_eq!(image, "registry.example.com/myapp/backend");
+    }
+
+    #[test]
+    fn test_build_container_image_docker_hub_variants() {
+        // Various Docker Hub URL formats should all skip the prefix
+        assert_eq!(
+            build_container_image("https://registry-1.docker.io/v2/", "user/app"),
+            "user/app"
+        );
+        assert_eq!(
+            build_container_image("https://docker.io", "user/app"),
+            "user/app"
+        );
     }
 }

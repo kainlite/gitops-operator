@@ -63,6 +63,31 @@ pub struct Entry {
     pub config: Config,
 }
 
+/// Build the full container image reference from the registry URL and image name.
+/// For Docker Hub (index.docker.io), the image name is used as-is (e.g. "user/repo").
+/// For other registries, the registry host is prepended (e.g. "ghcr.io/user/repo").
+pub fn build_container_image(registry_url: &str, image_name: &str) -> String {
+    // Docker Hub URLs don't need a prefix in container image references
+    if registry_url.contains("docker.io") {
+        return image_name.to_string();
+    }
+
+    // Extract hostname from registry URL (e.g. "https://ghcr.io" -> "ghcr.io")
+    let host = registry_url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/')
+        .split('/')
+        .next()
+        .unwrap_or("");
+
+    if host.is_empty() {
+        return image_name.to_string();
+    }
+
+    format!("{}/{}", host, image_name)
+}
+
 /// Processor for handling deployment reconciliation with injectable dependencies
 pub struct DeploymentProcessor {
     secret_provider: Arc<dyn SecretProvider>,
@@ -119,6 +144,11 @@ impl DeploymentProcessor {
             .registry_url
             .as_deref()
             .unwrap_or("https://index.docker.io/v1/");
+
+        // Build full container image reference (e.g. ghcr.io/user/repo)
+        // For Docker Hub the image_name is used as-is, for other registries
+        // the registry host is prepended
+        let container_image = build_container_image(registry_url, &entry.config.image_name);
 
         // Get registry credentials
         let registry_credentials = self
@@ -232,7 +262,7 @@ impl DeploymentProcessor {
                 }
             }
 
-            match patch_deployment(&deployment_path, &entry.config.image_name, &new_sha) {
+            match patch_deployment(&deployment_path, &container_image, &new_sha) {
                 Ok(_) => info!("File patched successfully for: {}", &entry.name),
                 Err(e) => {
                     let _ = remove_dir_all(&manifest_repo_path);
