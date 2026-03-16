@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/kainlite/gitops-operator/compare/v0.9.2...v0.9.3) (2026-03-16)
+
+
+### Bug Fixes
+
+* trigger CI build after dependabot auto-merge ([dc3dccb](https://github.com/kainlite/gitops-operator/commit/dc3dccbe4ba5ded3efd97026772cbddf3a14515e))
+
 ## [0.9.2](https://github.com/kainlite/gitops-operator/compare/v0.9.1...v0.9.2) (2026-03-16)
 
 
