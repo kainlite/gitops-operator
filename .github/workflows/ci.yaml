@@ -7,6 +7,8 @@ on:
       - master
     tags:
       - '*'
+  repository_dispatch:
+    types: [dependabot-merge]
 
 env:
   REGISTRY: ghcr.io

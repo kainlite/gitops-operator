@@ -37,3 +37,35 @@ jobs:
         env:
           PR_URL: ${{github.event.pull_request.html_url}}
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+      - name: Wait for merge to complete
+        run: |
+          for i in $(seq 1 30); do
+            STATE=$(gh pr view "$PR_URL" --json state --jq .state)
+            if [ "$STATE" = "MERGED" ]; then
+              echo "PR merged successfully"
+              exit 0
+            fi
+            echo "Waiting for merge... (attempt $i/30, state: $STATE)"
+            sleep 10
+          done
+          echo "PR not merged after 5 minutes, skipping CI dispatch"
+          exit 1
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+      - name: Trigger CI build for merged commit
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              event_type: 'dependabot-merge',
+              client_payload: {
+                pr_number: context.payload.pull_request.number,
+                pr_title: context.payload.pull_request.title
+              }
+            });
