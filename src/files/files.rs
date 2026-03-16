@@ -20,13 +20,13 @@ pub fn needs_patching(file_path: &str, new_sha: &str) -> Result<bool, Error> {
     info!("Comparing deployment file: {}", file_path);
     let deployment = get_deployment_from_file(file_path)?;
 
-    if let Some(spec) = deployment.spec {
-        if let Some(template) = spec.template.spec {
-            for container in &template.containers {
-                if container.image.as_ref().unwrap().contains(new_sha) {
-                    info!("Image tag already updated... Aborting mission!");
-                    return Ok(false);
-                }
+    if let Some(spec) = deployment.spec
+        && let Some(template) = spec.template.spec
+    {
+        for container in &template.containers {
+            if container.image.as_ref().unwrap().contains(new_sha) {
+                info!("Image tag already updated... Aborting mission!");
+                return Ok(false);
             }
         }
     }
@@ -40,19 +40,19 @@ pub fn patch_deployment(file_path: &str, image_name: &str, new_sha: &str) -> Res
     let mut deployment = get_deployment_from_file(file_path)?;
 
     // Modify deployment specifics
-    if let Some(spec) = deployment.spec.as_mut() {
-        if let Some(template) = spec.template.spec.as_mut() {
-            for container in &mut template.containers {
-                if container.image.as_ref().unwrap().contains(new_sha) {
-                    warn!("Image tag already updated... Aborting mission!");
-                    return Err(anyhow::anyhow!(
-                        "Image tag {} is already up to date",
-                        new_sha
-                    ));
-                }
-                if container.image.as_ref().unwrap().contains(image_name) {
-                    container.image = Some(format!("{}:{}", &image_name, &new_sha));
-                }
+    if let Some(spec) = deployment.spec.as_mut()
+        && let Some(template) = spec.template.spec.as_mut()
+    {
+        for container in &mut template.containers {
+            if container.image.as_ref().unwrap().contains(new_sha) {
+                warn!("Image tag already updated... Aborting mission!");
+                return Err(anyhow::anyhow!(
+                    "Image tag {} is already up to date",
+                    new_sha
+                ));
+            }
+            if container.image.as_ref().unwrap().contains(image_name) {
+                container.image = Some(format!("{}:{}", &image_name, &new_sha));
             }
         }
     }

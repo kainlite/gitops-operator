@@ -1,7 +1,7 @@
 # gitops-operator
 
 [![ci](https://github.com/kainlite/gitops-operator/actions/workflows/ci.yaml/badge.svg)](https://github.com/kainlite/gitops-operator/actions/workflows/ci.yaml)
-[![docker image](https://img.shields.io/docker/pulls/kainlite/gitops-operator.svg)](https://hub.docker.com/r/kainlite/gitops-operator)
+[![docker image](https://ghcr.io/kainlite/gitops-operator)](https://github.com/kainlite/gitops-operator/pkgs/container/gitops-operator)
 [![codecov](https://codecov.io/gh/kainlite/gitops-operator/branch/master/graph/badge.svg)](https://codecov.io/gh/kainlite/gitops-operator)
 
 Basically this is a GitOps controller working in pull mode (from the cluster), triggered by Kubernetes on a readiness check (this is a
@@ -85,10 +85,13 @@ A bit more information about the annotations:
     gitops.operator.namespace: # The namespace where this deployment is currently running
     gitops.operator.ssh_key_name: # The name of the secret containing the SSH key
     gitops.operator.ssh_key_namespace: # The namespace of the secret containing the SSH key
-    gitops.operator.notifications_secret_name: # OPTIONAL: Wether to try to send a Slack notification to the provided endpoint via the secret (the data field needs to be webhook-url)
-    gitops.operator.notifications_secret_namespace: # OPTIONAL: Wether to try to send a Slack notification to the provided endpoint via the secret (the data field needs to be webhook-url)
+    gitops.operator.notifications_secret_name: # OPTIONAL: Whether to try to send a Slack notification to the provided endpoint via the secret (the data field needs to be webhook-url)
+    gitops.operator.notifications_secret_namespace: # OPTIONAL: Whether to try to send a Slack notification to the provided endpoint via the secret (the data field needs to be webhook-url)
+    gitops.operator.registry_secret_url: # OPTIONAL: Registry URL for image checks (e.g., https://ghcr.io), defaults to https://index.docker.io/v1/
     gitops.operator.registry_secret_name: # OPTIONAL: defaults to regcred
     gitops.operator.registry_secret_namespace: # OPTIONAL: defaults to gitops-operator
+    gitops.operator.github_token_secret_name: # OPTIONAL: Name of the K8s secret containing a GitHub token (key: github-token) for build status checks
+    gitops.operator.github_token_secret_namespace: # OPTIONAL: Namespace of the GitHub token secret, defaults to gitops-operator
 
 ### SSH key secret
 Note: you can create the secret as follows:
@@ -109,13 +112,31 @@ to create a secret per namespace, where you app is deployed):
 kubectl create secret generic webhook-secret  -n define_ns --from-literal=webhook-url=https://hooks.slack.com/services/...
 ```
 
-### Enable checking the Docker registry
+### Enable checking the container registry
 In order to check if the image is already present in the repository before patching the files you'll need a secret for
-the docker registry which can be created like this (these annotations are optional by default):
+the container registry which can be created like this (these annotations are optional by default):
+
+For Docker Hub:
 ```bash
 docker login
 kubectl -n gitops-operator create secret docker-registry regcred --from-file=/home/user/.docker/config.json
 ```
+
+For GHCR (GitHub Container Registry):
+```bash
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+kubectl -n gitops-operator create secret docker-registry regcred --from-file=/home/user/.docker/config.json
+```
+Then set `gitops.operator.registry_secret_url: 'https://ghcr.io'` in your deployment annotations.
+
+### Enable GitHub Actions build status checks
+When an image is not found in the registry, the operator can check GitHub Actions to determine if a build is still
+running and retry with exponential backoff. This is optional and requires a GitHub token:
+```bash
+kubectl -n gitops-operator create secret generic github-token --from-literal=github-token=ghp_your_token_here
+```
+Then set `gitops.operator.github_token_secret_name: 'github-token'` in your deployment annotations.
+The token needs `actions:read` permission on the repository.
 
 ### In-Cluster
 Apply manifests from [here](https://github.com/kainlite/gitops-operator-manifests), then you can trigger it manually using port-forward: `kubectl port-forward service/gitops-operator 8000:80`

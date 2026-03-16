@@ -240,6 +240,115 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_check_image_ghcr_registry() {
+        init_logging();
+        let mock_server = MockServer::start().await;
+
+        // GHCR returns 401 with a Bearer challenge pointing to ghcr.io/token
+        Mock::given(method("HEAD"))
+            .and(path("/v2/kainlite/gitops-operator/manifests/abc123"))
+            .respond_with(
+                ResponseTemplate::new(401).insert_header(
+                    "www-authenticate",
+                    format!(
+                        r#"Bearer realm="{}/token",service="ghcr.io",scope="repository:kainlite/gitops-operator:pull""#,
+                        mock_server.uri()
+                    ),
+                ),
+            )
+            .mount(&mock_server)
+            .await;
+
+        // Token endpoint returns a valid token
+        Mock::given(method("GET"))
+            .and(path("/token"))
+            .and(query_param("service", "ghcr.io"))
+            .and(query_param(
+                "scope",
+                "repository:kainlite/gitops-operator:pull",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "token": "ghcr-bearer-token",
+                "expires_in": 300
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Second request with bearer token succeeds
+        Mock::given(method("HEAD"))
+            .and(path("/v2/kainlite/gitops-operator/manifests/abc123"))
+            .and(header("authorization", "Bearer ghcr-bearer-token"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let checker =
+            RegistryChecker::new(mock_server.uri(), Some("Basic dXNlcjpwYXNz".to_string()))
+                .await
+                .unwrap();
+
+        let result = checker
+            .check_image("kainlite/gitops-operator", "abc123")
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_image_ghcr_not_found() {
+        init_logging();
+        let mock_server = MockServer::start().await;
+
+        // GHCR returns 401 with a Bearer challenge
+        Mock::given(method("HEAD"))
+            .and(path(
+                "/v2/kainlite/gitops-operator/manifests/nonexistent-sha",
+            ))
+            .respond_with(
+                ResponseTemplate::new(401).insert_header(
+                    "www-authenticate",
+                    format!(
+                        r#"Bearer realm="{}/token",service="ghcr.io",scope="repository:kainlite/gitops-operator:pull""#,
+                        mock_server.uri()
+                    ),
+                ),
+            )
+            .mount(&mock_server)
+            .await;
+
+        // Token endpoint returns a valid token
+        Mock::given(method("GET"))
+            .and(path("/token"))
+            .and(query_param("service", "ghcr.io"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "token": "ghcr-bearer-token",
+                "expires_in": 300
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Second request with bearer token returns 404
+        Mock::given(method("HEAD"))
+            .and(path(
+                "/v2/kainlite/gitops-operator/manifests/nonexistent-sha",
+            ))
+            .and(header("authorization", "Bearer ghcr-bearer-token"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let checker =
+            RegistryChecker::new(mock_server.uri(), Some("Basic dXNlcjpwYXNz".to_string()))
+                .await
+                .unwrap();
+
+        let result = checker
+            .check_image("kainlite/gitops-operator", "nonexistent-sha")
+            .await;
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[tokio::test]
     async fn test_get_bearer_token_failed_auth() {
         init_logging();
         let mock_server = MockServer::start().await;

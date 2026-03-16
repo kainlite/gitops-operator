@@ -59,6 +59,22 @@ impl SecretProvider for K8sSecretProvider {
         String::from_utf8(bytes).context("Failed to convert key to string")
     }
 
+    async fn get_github_token(&self, name: &str, namespace: &str) -> Result<String> {
+        let client = Client::try_default().await?;
+        let secrets: Api<Secret> = Api::namespaced(client, namespace);
+        let secret = secrets.get(name).await?;
+
+        let secret_data = secret.data.context("Failed to read the data section")?;
+
+        let encoded_token = secret_data
+            .get("github-token")
+            .context("Failed to read field: github-token in data, consider recreating the secret with kubectl create secret generic name --from-literal=github-token=ghp_...")?;
+
+        let bytes = encoded_token.0.clone();
+
+        String::from_utf8(bytes).context("Failed to convert token to string")
+    }
+
     async fn get_registry_auth(
         &self,
         secret_name: &str,

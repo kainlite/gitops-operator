@@ -111,6 +111,75 @@ mod tests {
     }
 
     #[test]
+    fn test_deployment_to_entry_with_ghcr_registry() {
+        let mut annotations = BTreeMap::new();
+        annotations.insert("gitops.operator.enabled".to_string(), "true".to_string());
+        annotations.insert(
+            "gitops.operator.app_repository".to_string(),
+            "https://github.com/org/app".to_string(),
+        );
+        annotations.insert(
+            "gitops.operator.manifest_repository".to_string(),
+            "https://github.com/org/manifests".to_string(),
+        );
+        annotations.insert(
+            "gitops.operator.image_name".to_string(),
+            "kainlite/gitops-operator".to_string(),
+        );
+        annotations.insert(
+            "gitops.operator.deployment_path".to_string(),
+            "deployments/app.yaml".to_string(),
+        );
+        annotations.insert(
+            "gitops.operator.ssh_key_name".to_string(),
+            "ssh-key".to_string(),
+        );
+        annotations.insert(
+            "gitops.operator.ssh_key_namespace".to_string(),
+            "myns".to_string(),
+        );
+        annotations.insert(
+            "gitops.operator.registry_secret_url".to_string(),
+            "https://ghcr.io".to_string(),
+        );
+        annotations.insert(
+            "gitops.operator.registry_secret_name".to_string(),
+            "ghcr-secret".to_string(),
+        );
+        annotations.insert(
+            "gitops.operator.registry_secret_namespace".to_string(),
+            "myns".to_string(),
+        );
+
+        let deployment = create_test_deployment(
+            "test-app",
+            "default",
+            "ghcr.io/kainlite/gitops-operator:latest",
+            annotations,
+        );
+
+        let entry = Entry::new(&deployment);
+        assert!(entry.is_some());
+
+        let entry = entry.unwrap();
+        assert_eq!(entry.container, "ghcr.io/kainlite/gitops-operator");
+        assert_eq!(entry.version, "latest");
+        assert_eq!(
+            entry.config.registry_url,
+            Some("https://ghcr.io".to_string())
+        );
+        assert_eq!(
+            entry.config.registry_secret_name,
+            Some("ghcr-secret".to_string())
+        );
+        assert_eq!(
+            entry.config.registry_secret_namespace,
+            Some("myns".to_string())
+        );
+        assert_eq!(entry.config.image_name, "kainlite/gitops-operator");
+    }
+
+    #[test]
     fn test_deployment_to_entry_missing_annotations() {
         let deployment =
             create_test_deployment("test-app", "default", "my-container:1.0.0", BTreeMap::new());

@@ -153,26 +153,24 @@ impl RegistryChecker {
             .send()
             .await?;
 
-        if response.status().as_u16() == 401 {
-            if let Some(auth_header) = response.headers().get(WWW_AUTHENTICATE) {
-                if let Some(challenge) =
-                    AuthChallenge::from_header(auth_header.to_str().unwrap_or_default())
-                {
-                    // Get bearer token and retry with it
-                    let token = self.get_bearer_token(&challenge).await?;
-                    let auth_value = format!("Bearer {}", token);
+        if response.status().as_u16() == 401
+            && let Some(auth_header) = response.headers().get(WWW_AUTHENTICATE)
+            && let Some(challenge) =
+                AuthChallenge::from_header(auth_header.to_str().unwrap_or_default())
+        {
+            // Get bearer token and retry with it
+            let token = self.get_bearer_token(&challenge).await?;
+            let auth_value = format!("Bearer {}", token);
 
-                    let response = self
-                        .client
-                        .head(&url)
-                        .header(AUTHORIZATION, auth_value)
-                        .send()
-                        .await?;
-                    info!("registry checker status: {}", response.status());
+            let response = self
+                .client
+                .head(&url)
+                .header(AUTHORIZATION, auth_value)
+                .send()
+                .await?;
+            info!("registry checker status: {}", response.status());
 
-                    return Ok(response.status().is_success());
-                }
-            }
+            return Ok(response.status().is_success());
         }
 
         Ok(response.status().is_success())

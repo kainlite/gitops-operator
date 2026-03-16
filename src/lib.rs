@@ -1,6 +1,7 @@
 pub mod configuration;
 pub mod files;
 pub mod git;
+pub mod github;
 pub mod notifications;
 pub mod registry;
 pub mod secrets;

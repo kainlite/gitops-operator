@@ -9,9 +9,6 @@ on:
     tags:
       - '*'
 
-env:
-  DOCKERHUB_REPO: kainlite/gitops-operator
-
 jobs:
   lint:
     runs-on: ubuntu-latest

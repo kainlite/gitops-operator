@@ -45,6 +45,10 @@ mod integration_tests {
             Ok(String::new()) // No notifications in tests
         }
 
+        async fn get_github_token(&self, _name: &str, _namespace: &str) -> Result<String> {
+            Ok("ghp_test_token".to_string())
+        }
+
         async fn get_registry_auth(
             &self,
             _secret_name: &str,

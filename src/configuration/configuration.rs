@@ -1,9 +1,13 @@
 use crate::files::{needs_patching, patch_deployment};
 use crate::git::{clone_repo, commit_changes, get_latest_commit};
+use crate::github::GitHubBuildChecker;
 use crate::notifications::HttpNotificationSender;
 use crate::registry::RegistryCheckerFactory;
 use crate::secrets::K8sSecretProvider;
-use crate::traits::{ImageChecker, ImageCheckerFactory, NotificationSender, SecretProvider};
+use crate::traits::{
+    BuildStatus, BuildStatusChecker, ImageChecker, ImageCheckerFactory, NotificationSender,
+    SecretProvider,
+};
 use axum::Json;
 use axum::extract::State as AxumState;
 use futures::future;
@@ -43,6 +47,8 @@ pub struct Config {
     pub registry_url: Option<String>,
     pub registry_secret_name: Option<String>,
     pub registry_secret_namespace: Option<String>,
+    pub github_token_secret_name: Option<String>,
+    pub github_token_secret_namespace: Option<String>,
     pub state: State,
 }
 
@@ -206,14 +212,13 @@ impl DeploymentProcessor {
         if needs_patching(&deployment_path, &new_sha).unwrap_or(false) {
             info!("Checking image: {}", &entry.config.image_name);
             if let Some(ref checker) = image_checker {
-                if !checker
-                    .check_image(&entry.config.image_name, &new_sha)
-                    .await
-                    .unwrap_or(false)
-                {
+                let image_found = self
+                    .wait_for_image(entry, checker.as_ref(), &new_sha, registry_url, &endpoint)
+                    .await;
+                if !image_found {
                     let message = format!(
-                        ":probing_cane: image: https://hub.docker.com/repository/docker/{}/tags with SHA: {} not found in registry, it is likely still building...",
-                        &entry.config.image_name, &new_sha
+                        ":x: image: {}/{} with SHA: {} not found in registry after waiting for build",
+                        registry_url, &entry.config.image_name, &new_sha
                     );
                     if let Some(ref ep) = endpoint {
                         if let Err(e) = self.notification_sender.send(&message, ep).await {
@@ -318,6 +323,179 @@ impl DeploymentProcessor {
             }
         }
     }
+
+    /// Optionally create a build status checker if GitHub token annotations are configured
+    async fn get_build_checker(&self, entry: &Entry) -> Option<Box<dyn BuildStatusChecker>> {
+        let secret_name = entry.config.github_token_secret_name.as_deref()?;
+        let namespace = entry
+            .config
+            .github_token_secret_namespace
+            .as_deref()
+            .unwrap_or("gitops-operator");
+
+        match self
+            .secret_provider
+            .get_github_token(secret_name, namespace)
+            .await
+        {
+            Ok(token) => match GitHubBuildChecker::new(token) {
+                Ok(checker) => {
+                    info!("GitHub build status checker configured");
+                    Some(Box::new(checker))
+                }
+                Err(e) => {
+                    warn!("Failed to create GitHub build checker: {:?}", e);
+                    None
+                }
+            },
+            Err(e) => {
+                warn!("Failed to get GitHub token: {:?}", e);
+                None
+            }
+        }
+    }
+
+    /// Wait for an image to appear in the registry, optionally checking GitHub build status.
+    /// Returns true if the image was found, false otherwise.
+    async fn wait_for_image(
+        &self,
+        entry: &Entry,
+        checker: &dyn ImageChecker,
+        sha: &str,
+        registry_url: &str,
+        endpoint: &Option<String>,
+    ) -> bool {
+        const MAX_RETRIES: u32 = 5;
+        const INITIAL_DELAY_SECS: u64 = 10;
+        const BACKOFF_MULTIPLIER: u64 = 2;
+        const MAX_DELAY_SECS: u64 = 60;
+
+        // First check: is the image already available?
+        if checker
+            .check_image(&entry.config.image_name, sha)
+            .await
+            .unwrap_or(false)
+        {
+            return true;
+        }
+
+        info!(
+            "Image {}/{} with SHA {} not found, checking build status...",
+            registry_url, &entry.config.image_name, sha
+        );
+
+        // Try to get a build status checker (only if GitHub annotations are configured)
+        let build_checker = self.get_build_checker(entry).await;
+        let build_checker = match build_checker {
+            Some(bc) => bc,
+            None => {
+                // No build checker configured, just report image not found
+                info!("No GitHub build checker configured, skipping retry logic");
+                return false;
+            }
+        };
+
+        // Parse GitHub repo from app_repository URL
+        let github_repo = match crate::github::parse_github_repo(&entry.config.app_repository) {
+            Some(repo) => repo,
+            None => {
+                warn!(
+                    "Could not parse GitHub repo from app_repository: {}",
+                    &entry.config.app_repository
+                );
+                return false;
+            }
+        };
+
+        // Check build status and retry if building
+        let mut delay_secs = INITIAL_DELAY_SECS;
+
+        for attempt in 1..=MAX_RETRIES {
+            let build_status = match build_checker.check_build_status(&github_repo, sha).await {
+                Ok(status) => status,
+                Err(e) => {
+                    warn!("Failed to check build status: {:?}", e);
+                    return false;
+                }
+            };
+
+            match build_status {
+                BuildStatus::Running | BuildStatus::Queued => {
+                    let status_str = match build_status {
+                        BuildStatus::Running => "running",
+                        BuildStatus::Queued => "queued",
+                        _ => unreachable!(),
+                    };
+
+                    info!(
+                        "Build is {} for SHA {}, waiting {}s before retry (attempt {}/{})",
+                        status_str, sha, delay_secs, attempt, MAX_RETRIES
+                    );
+
+                    if let Some(ep) = endpoint {
+                        let message = format!(
+                            ":hourglass: Build {} for {}/{} (SHA: {}), retrying in {}s (attempt {}/{})",
+                            status_str,
+                            registry_url,
+                            &entry.config.image_name,
+                            sha,
+                            delay_secs,
+                            attempt,
+                            MAX_RETRIES
+                        );
+                        if let Err(e) = self.notification_sender.send(&message, ep).await {
+                            warn!("Failed to send notification: {:?}", e);
+                        }
+                    }
+
+                    tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
+
+                    // Check registry again after waiting
+                    if checker
+                        .check_image(&entry.config.image_name, sha)
+                        .await
+                        .unwrap_or(false)
+                    {
+                        info!("Image found after {} retries", attempt);
+                        return true;
+                    }
+
+                    delay_secs = (delay_secs * BACKOFF_MULTIPLIER).min(MAX_DELAY_SECS);
+                }
+                BuildStatus::Failed => {
+                    error!("Build failed for SHA {} in repo {}", sha, github_repo);
+                    if let Some(ep) = endpoint {
+                        let message = format!(
+                            ":x: Build failed for {}/{} (SHA: {}), image will not be available",
+                            registry_url, &entry.config.image_name, sha
+                        );
+                        if let Err(e) = self.notification_sender.send(&message, ep).await {
+                            warn!("Failed to send notification: {:?}", e);
+                        }
+                    }
+                    return false;
+                }
+                BuildStatus::Completed => {
+                    // Build completed but image not in registry: likely wrong image name
+                    warn!(
+                        "Build completed for SHA {} but image not found, possible image name mismatch",
+                        sha
+                    );
+                    return false;
+                }
+                BuildStatus::NotFound => {
+                    warn!("No CI build found for SHA {} in repo {}", sha, github_repo);
+                    return false;
+                }
+            }
+        }
+
+        error!(
+            "Image not found after {} retries for SHA {}",
+            MAX_RETRIES, sha
+        );
+        false
+    }
 }
 
 impl Entry {
@@ -389,6 +567,14 @@ impl Entry {
             .get("gitops.operator.registry_secret_namespace")
             .map(|name| name.to_string());
 
+        let github_token_secret_name = annotations
+            .get("gitops.operator.github_token_secret_name")
+            .map(|name| name.to_string());
+
+        let github_token_secret_namespace = annotations
+            .get("gitops.operator.github_token_secret_namespace")
+            .map(|name| name.to_string());
+
         info!("Processing: {}/{}", &namespace, &name);
 
         Some(Entry {
@@ -413,6 +599,8 @@ impl Entry {
                 registry_url,
                 registry_secret_name,
                 registry_secret_namespace,
+                github_token_secret_name,
+                github_token_secret_namespace,
                 state: State::Queued,
             },
         })
