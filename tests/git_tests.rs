@@ -102,8 +102,46 @@ mod tests {
     }
 
     #[test]
+    fn test_stage_and_push_skips_when_no_changes() {
+        // Regression: when patch_deployment produces no diff (e.g. image_name
+        // mismatch), the operator was creating empty commits and pushing them.
+        // This test asserts no new commit is created when the working tree
+        // matches HEAD.
+        let test_repo = TestRepo::new();
+        let _bare = test_repo.create_bare_clone();
+
+        let head_before = test_repo
+            .repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id();
+
+        let _ = stage_and_push_changes(
+            &test_repo.repo,
+            "should not create empty commit",
+            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
+        );
+
+        let head_after = test_repo
+            .repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id();
+
+        assert_eq!(
+            head_before, head_after,
+            "stage_and_push_changes must not create an empty commit"
+        );
+    }
+
+    #[test]
     fn test_stage_and_push_changes() {
         let test_repo = TestRepo::new();
+        let _bare = test_repo.create_bare_clone();
 
         // Verify we're on master branch before starting
         let head = test_repo.repo.head().unwrap();
@@ -113,10 +151,14 @@ mod tests {
             "Should be on master branch"
         );
 
-        // Create and add a new file
-        test_repo.add_and_commit_file("test.txt", "test content", "Test commit");
+        // Drop a new file in the working tree so there's something to commit.
+        // We do NOT use `git commit` here - that's stage_and_push_changes' job.
+        fs::write(
+            test_repo.dir.path().join("new-file.txt"),
+            "content to be staged",
+        )
+        .unwrap();
 
-        // Stage and commit changes
         let _ = stage_and_push_changes(
             &test_repo.repo,
             "Test commit",
@@ -125,7 +167,7 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(1));
 
-        // Verify commit
+        // Verify a new commit was created with the expected message
         let head = test_repo.repo.head().unwrap();
         let commit = head.peel_to_commit().unwrap();
         assert_eq!(commit.message().unwrap(), "Test commit");

@@ -177,6 +177,39 @@ impl RegistryChecker {
     }
 }
 
+/// Extract the basic-auth token for a given registry from a parsed
+/// `.dockerconfigjson` payload.
+///
+/// Docker login stores credentials under different key shapes depending on the
+/// registry: Docker Hub uses the full URL (`https://index.docker.io/v1/`) but
+/// GHCR and most others use the bare hostname (`ghcr.io`). This helper tries the
+/// caller-provided URL first, then falls back to the bare host.
+pub fn extract_auth_from_dockerconfig(config_json: &str, registry_url: &str) -> Result<String> {
+    let config: Value =
+        serde_json::from_str(config_json).context("Failed to parse dockerconfigjson")?;
+
+    let auths = config
+        .get("auths")
+        .ok_or_else(|| anyhow::anyhow!("'auths' field not found in dockerconfigjson"))?;
+
+    let bare_host = registry_url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/')
+        .split('/')
+        .next()
+        .unwrap_or("");
+
+    let auth = auths
+        .get(registry_url)
+        .or_else(|| auths.get(bare_host))
+        .and_then(|registry| registry.get("auth"))
+        .and_then(|auth| auth.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Auth not found for registry {}", registry_url))?;
+
+    Ok(format!("Basic {}", auth))
+}
+
 #[tracing::instrument(name = "get_registry_auth_from_secret", skip(), fields())]
 pub async fn get_registry_auth_from_secret(
     secret_name: &str,
@@ -195,27 +228,14 @@ pub async fn get_registry_auth_from_secret(
         .data
         .ok_or_else(|| anyhow::anyhow!("Secret data is empty"))?;
 
-    // Get the .dockerconfigjson data
     let raw_data = data
         .get(".dockerconfigjson")
         .ok_or_else(|| anyhow::anyhow!(".dockerconfigjson not found in secret"))?;
 
-    let key_bytes = raw_data.0.clone();
+    let str_data =
+        String::from_utf8(raw_data.0.clone()).context("Failed to convert raw data to string")?;
 
-    let str_data = String::from_utf8(key_bytes).context("Failed to convert raw data to string")?;
-
-    // Parse the JSON
-    let config: Value = serde_json::from_str(&str_data)?;
-
-    // Extract auth token for the specified registry
-    let auth = config
-        .get("auths")
-        .and_then(|auths| auths.get(registry_url))
-        .and_then(|registry| registry.get("auth"))
-        .and_then(|auth| auth.as_str())
-        .ok_or_else(|| anyhow::anyhow!("Auth not found for registry {}", registry_url))?;
-
-    Ok(format!("Basic {}", auth))
+    extract_auth_from_dockerconfig(&str_data, registry_url)
 }
 
 /// Implement the ImageChecker trait for RegistryChecker

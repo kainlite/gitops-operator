@@ -220,6 +220,16 @@ pub fn stage_and_push_changes(
     // Get the current head commit
     let parent_commit = repo.head()?.peel_to_commit()?;
 
+    // If the staged tree is identical to HEAD's tree, there's nothing to commit.
+    // Skip rather than producing an empty commit that pollutes the manifests repo.
+    if tree.id() == parent_commit.tree_id() {
+        info!(
+            "No changes detected against HEAD ({}); skipping commit and push",
+            parent_commit.id()
+        );
+        return Ok(());
+    }
+
     info!("Parent commit: {}", parent_commit.id());
 
     // Prepare signature (author and committer)

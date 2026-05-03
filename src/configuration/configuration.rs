@@ -85,6 +85,13 @@ pub fn build_container_image(registry_url: &str, image_name: &str) -> String {
         return image_name.to_string();
     }
 
+    // Don't double-prepend if the image name already includes the registry host.
+    // Users may set `image_name` as either `kainlite/tr` or `ghcr.io/kainlite/tr`;
+    // both should resolve to the same fully-qualified reference.
+    if image_name.starts_with(&format!("{}/", host)) {
+        return image_name.to_string();
+    }
+
     format!("{}/{}", host, image_name)
 }
 

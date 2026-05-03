@@ -9,6 +9,36 @@ mod tests {
         matchers::{header, method, path, query_param},
     };
 
+    #[test]
+    fn test_extract_auth_from_dockerconfig_exact_url_match() {
+        // Docker Hub stores credentials under the full URL key
+        let config = r#"{"auths":{"https://index.docker.io/v1/":{"auth":"ZG9ja2VyOnNlY3JldA=="}}}"#;
+        let auth = extract_auth_from_dockerconfig(config, "https://index.docker.io/v1/").unwrap();
+        assert_eq!(auth, "Basic ZG9ja2VyOnNlY3JldA==");
+    }
+
+    #[test]
+    fn test_extract_auth_from_dockerconfig_falls_back_to_bare_host() {
+        // GHCR (and most non-Docker-Hub registries) store creds under the bare hostname
+        let config = r#"{"auths":{"ghcr.io":{"auth":"a2FpbmxpdGU6dG9rZW4="}}}"#;
+        let auth = extract_auth_from_dockerconfig(config, "https://ghcr.io").unwrap();
+        assert_eq!(auth, "Basic a2FpbmxpdGU6dG9rZW4=");
+    }
+
+    #[test]
+    fn test_extract_auth_from_dockerconfig_handles_trailing_slash() {
+        let config = r#"{"auths":{"ghcr.io":{"auth":"a2FpbmxpdGU6dG9rZW4="}}}"#;
+        let auth = extract_auth_from_dockerconfig(config, "https://ghcr.io/").unwrap();
+        assert_eq!(auth, "Basic a2FpbmxpdGU6dG9rZW4=");
+    }
+
+    #[test]
+    fn test_extract_auth_from_dockerconfig_no_match_errors() {
+        let config = r#"{"auths":{"other.registry.io":{"auth":"abc"}}}"#;
+        let result = extract_auth_from_dockerconfig(config, "https://ghcr.io");
+        assert!(result.is_err());
+    }
+
     // Initialize logging for tests
     fn init_logging() {
         let _ = fmt()

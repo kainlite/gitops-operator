@@ -561,4 +561,21 @@ mod tests {
             "user/app"
         );
     }
+
+    #[test]
+    fn test_build_container_image_skips_prefix_when_image_name_already_has_host() {
+        // When image_name already starts with the registry host, don't double-prepend.
+        // Otherwise we'd produce ghcr.io/ghcr.io/... which won't match the deployed image.
+        let image = build_container_image("https://ghcr.io", "ghcr.io/kainlite/tr");
+        assert_eq!(image, "ghcr.io/kainlite/tr");
+    }
+
+    #[test]
+    fn test_build_container_image_skips_prefix_for_custom_registry_with_host() {
+        let image = build_container_image(
+            "https://registry.example.com",
+            "registry.example.com/team/svc",
+        );
+        assert_eq!(image, "registry.example.com/team/svc");
+    }
 }
