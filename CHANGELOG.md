@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.4](https://github.com/kainlite/gitops-operator/compare/v0.9.3...v0.9.4) (2026-05-03)
+
+
+### Bug Fixes
+
+* handle prefixed image names and bare-host registry credentials ([b25afcf](https://github.com/kainlite/gitops-operator/commit/b25afcf6e72e1f7d70c2a44eb3ab0d43fe70b34c))
+
 ## [0.9.3](https://github.com/kainlite/gitops-operator/compare/v0.9.2...v0.9.3) (2026-03-16)
 
 
