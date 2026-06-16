@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use gitops_operator::configuration::{Entry, State, build_container_image};
+    use gitops_operator::configuration::{
+        Action, Entry, Status, build_container_image, status_report,
+    };
     use k8s_openapi::api::apps::v1::Deployment;
     use std::collections::BTreeMap;
 
@@ -371,13 +373,12 @@ mod tests {
         let entries = response.0;
         dbg!(&entries);
 
-        // TODO: fix/improve this test
+        // One enabled, valid deployment is returned, tagged with its identity.
         assert_eq!(entries.len(), 1);
-        let entry1 = entries
-            .iter()
-            .find(|e| **e == State::Failure("".to_string()));
-        assert!(entry1.is_none());
-        // assert!(_entry1.to_string().contains("test-app"));
+        assert_eq!(entries[0].deployment, "test-app");
+        assert_eq!(entries[0].namespace, "default");
+        // Without a reachable cluster/repo, reconciliation cannot succeed.
+        assert_eq!(entries[0].status, Status::Failure);
     }
 
     #[tokio::test]
@@ -478,29 +479,39 @@ mod tests {
         let entries = response.0;
         println!("{:?}", entries);
 
-        // Verify the results
-        // Should only include valid deployments and enabled
-        assert_eq!(entries.len(), 1);
+        // The enabled+valid deployment and the disabled one are both reported
+        // (the disabled one as skipped). The deployment missing required
+        // annotations is excluded because it never becomes an Entry.
+        assert_eq!(entries.len(), 2);
 
-        // TODO: fix/improve this test
-        // Check first deployment (enabled)
-        // == "Deployment: test-app1 is up to date, proceeding to next deployment..."
-        let _entry1 = entries
+        // The enabled deployment is processed and fails without a cluster/repo.
+        let app1 = entries
             .iter()
-            .find(|e| **e == State::Failure("".to_string()));
-        // .contains("Failed to get latest SHA"))
+            .find(|e| e.deployment == "test-app1")
+            .expect("enabled deployment should be present");
+        assert_eq!(app1.status, Status::Failure);
 
-        // assert!(entry1.to_string().contains("test-app1"));
+        // The disabled deployment is surfaced as skipped instead of vanishing.
+        let app2 = entries
+            .iter()
+            .find(|e| e.deployment == "test-app2")
+            .expect("disabled deployment should be reported as skipped");
+        assert_eq!(app2.status, Status::Skipped);
+        assert_eq!(app2.action, Action::Skipped);
 
-        // Check that the second deployment (disabled) is not present
+        // The serialized shape uses snake_case enums and omits absent SHAs,
+        // matching the documented /reconcile response.
+        let json = serde_json::to_value(app2).unwrap();
+        assert_eq!(json["action"], "skipped");
+        assert_eq!(json["status"], "skipped");
+        assert_eq!(json["deployment"], "test-app2");
         assert!(
-            !entries
-                .iter()
-                .any(|e| { *e == State::Failure("".to_string()) })
+            json.get("from_sha").is_none(),
+            "absent from_sha should be omitted, got: {json}"
         );
 
-        // Verify the invalid deployment is not included
-        assert!(!entries.iter().any(|e| *e == State::Failure("".to_string())));
+        // The deployment missing required annotations is not included.
+        assert!(!entries.iter().any(|e| e.deployment == "test-app3"));
     }
 
     #[tokio::test]
@@ -577,5 +588,60 @@ mod tests {
             "registry.example.com/team/svc",
         );
         assert_eq!(image, "registry.example.com/team/svc");
+    }
+
+    fn minimal_annotations(enabled: bool) -> BTreeMap<String, String> {
+        let mut a = BTreeMap::new();
+        a.insert("gitops.operator.enabled".to_string(), enabled.to_string());
+        a.insert(
+            "gitops.operator.app_repository".to_string(),
+            "git@github.com:org/app.git".to_string(),
+        );
+        a.insert(
+            "gitops.operator.manifest_repository".to_string(),
+            "git@github.com:org/manifests.git".to_string(),
+        );
+        a.insert(
+            "gitops.operator.image_name".to_string(),
+            "org/app".to_string(),
+        );
+        a.insert(
+            "gitops.operator.deployment_path".to_string(),
+            "deployments/app.yaml".to_string(),
+        );
+        a.insert(
+            "gitops.operator.ssh_key_name".to_string(),
+            "ssh-key".to_string(),
+        );
+        a.insert(
+            "gitops.operator.ssh_key_namespace".to_string(),
+            "gitops-operator".to_string(),
+        );
+        a
+    }
+
+    #[test]
+    fn test_status_report_lists_deployments() {
+        let deployment = create_test_deployment(
+            "blog",
+            "default",
+            "org/app:abc1234",
+            minimal_annotations(true),
+        );
+        let entry = Entry::new(&deployment).expect("entry");
+
+        let report = status_report(&[entry]);
+        assert!(report.contains("tracked deployments: 1"), "{report}");
+        assert!(report.contains("blog"), "{report}");
+        assert!(report.contains("default"), "{report}");
+        assert!(report.contains("org/app:abc1234"), "{report}");
+        assert!(report.contains("NAMESPACE"), "{report}");
+    }
+
+    #[test]
+    fn test_status_report_empty() {
+        let report = status_report(&[]);
+        assert!(report.contains("tracked deployments: 0"), "{report}");
+        assert!(report.contains("No deployments"), "{report}");
     }
 }

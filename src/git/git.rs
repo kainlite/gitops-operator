@@ -171,10 +171,10 @@ fn pull_repo(repo: &Repository, branch: &str) -> Result<(), GitError> {
     );
 
     if merge_analysis.is_fast_forward() {
-        let refname = "refs/remotes/origin/master";
-        let mut reference = repo.find_reference(refname)?;
+        let refname = format!("refs/remotes/origin/{}", branch);
+        let mut reference = repo.find_reference(&refname)?;
         reference.set_target(fetch_commit.id(), "Fast-Forward")?;
-        repo.set_head(refname)?;
+        repo.set_head(&refname)?;
         repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
 
         Ok(())
@@ -195,6 +195,7 @@ fn pull_repo(repo: &Repository, branch: &str) -> Result<(), GitError> {
 pub fn stage_and_push_changes(
     repo: &Repository,
     commit_message: &str,
+    branch: &str,
     ssh_key: &str,
 ) -> Result<(), GitError> {
     info!(
@@ -235,7 +236,7 @@ pub fn stage_and_push_changes(
     // Prepare signature (author and committer)
     let signature = create_signature()?;
 
-    info!("Author: {}", signature.name().unwrap());
+    info!("Author: {}", signature.name().unwrap_or("<unknown>"));
 
     // Create the commit
     let commit_oid = repo.commit(
@@ -260,10 +261,10 @@ pub fn stage_and_push_changes(
     // Find the origin remote
     let mut remote = repo.find_remote("origin")?;
 
-    info!("Pushing to remote: {}", remote.url().unwrap());
+    info!("Pushing to remote: {}", remote.url().unwrap_or("<unknown>"));
 
-    // We are only watching the master branch at the moment
-    let refspec = "refs/heads/master";
+    // Push the local HEAD to the configured branch on the remote.
+    let refspec = format!("HEAD:refs/heads/{}", branch);
 
     info!("Pushing to remote branch: {}", &refspec);
 
@@ -282,11 +283,15 @@ pub fn clone_repo(url: &str, local_path: &str, branch: &str, ssh_key: &str) {
 }
 
 #[tracing::instrument(name = "commit_changes", skip(ssh_key), fields())]
-pub fn commit_changes(manifest_repo_path: &str, ssh_key: &str) -> Result<(), GitError> {
+pub fn commit_changes(
+    manifest_repo_path: &str,
+    branch: &str,
+    ssh_key: &str,
+) -> Result<(), GitError> {
     let commit_message = "chore(refs): gitops-operator updating image tags";
     let manifest_repo = Repository::open(manifest_repo_path)?;
 
-    stage_and_push_changes(&manifest_repo, commit_message, ssh_key)
+    stage_and_push_changes(&manifest_repo, commit_message, branch, ssh_key)
 }
 
 #[tracing::instrument(name = "get_latest_commit", skip(ssh_key), fields())]

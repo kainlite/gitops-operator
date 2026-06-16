@@ -2,7 +2,7 @@
 mod integration_tests {
     use anyhow::Result;
     use async_trait::async_trait;
-    use gitops_operator::configuration::{DeploymentProcessor, Entry, State};
+    use gitops_operator::configuration::{Action, DeploymentProcessor, Entry, Status};
     use gitops_operator::git::{clone_repo, get_latest_commit};
     use gitops_operator::traits::{
         ImageChecker, ImageCheckerFactory, NotificationSender, SecretProvider,
@@ -343,23 +343,27 @@ spec:
 
         // Create mock processor and process deployment
         let processor = create_mock_processor(ssh_key);
-        let state = entry.process_deployment_with(&processor).await;
+        let result = entry.process_deployment_with(&processor).await;
 
-        // Verify final state
-        match state {
-            State::Success(msg) => {
+        // Verify final result
+        assert_eq!(result.deployment, "test-app");
+        assert_eq!(result.namespace, "default");
+        match result.status {
+            Status::Success => {
                 assert!(
-                    msg.contains("patched successfully to version") || msg.contains("up to date"),
-                    "Should indicate successful processing, got: {}",
-                    msg
+                    matches!(result.action, Action::Patched | Action::UpToDate),
+                    "Unexpected action: {:?}",
+                    result.action
+                );
+                assert!(
+                    result.to_sha.is_some(),
+                    "Successful reconcile should report a to_sha"
                 );
             }
-            State::Failure(msg) => {
-                panic!("Processing failed: {}", msg);
-            }
-            _ => {
-                panic!("Unexpected state: {:?}", state);
-            }
+            other => panic!(
+                "Processing did not succeed: {:?}: {}",
+                other, result.message
+            ),
         }
 
         // Clean up
@@ -419,30 +423,66 @@ spec:
         let processor = create_mock_processor(ssh_key);
 
         // Process deployment first time
-        let _state = entry.process_deployment_with(&processor).await;
+        let _first = entry.process_deployment_with(&processor).await;
 
         // Process deployment again - should be up to date now
-        let state = entry.process_deployment_with(&processor).await;
+        let result = entry.process_deployment_with(&processor).await;
 
-        // Verify final state
-        match state {
-            State::Success(msg) => {
-                assert!(
-                    msg.contains("up to date") || msg.contains("patched successfully"),
-                    "Should indicate successful processing, got: {}",
-                    msg
+        // Verify final result: second pass must observe an up-to-date manifest.
+        match result.status {
+            Status::Success => {
+                assert_eq!(
+                    result.action,
+                    Action::UpToDate,
+                    "Second reconcile should be up to date, got: {}",
+                    result.message
                 );
             }
-            State::Failure(msg) => {
-                // This could happen if image check fails, but with mocks it shouldn't
-                panic!("Processing failed unexpectedly: {}", msg);
-            }
-            _ => {
-                panic!("Unexpected state: {:?}", state);
-            }
+            other => panic!(
+                "Processing failed unexpectedly: {:?}: {}",
+                other, result.message
+            ),
         }
 
         // Clean up
+        fs::remove_dir_all(&app_link_path).ok();
+        fs::remove_dir_all(&manifest_link_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_reconcile_reports_failure_on_image_name_mismatch() {
+        // Regression: a failed patch (image_name referencing no container in the
+        // manifest) used to fall through and be reported as Success. It must now
+        // surface as an explicit failure.
+        let repos = TestRepos::new();
+        let ssh_key = "dummy-ssh-key-for-file-protocol";
+
+        let mut deployment =
+            create_test_deployment_with_repos(&repos.get_app_url(), &repos.get_manifest_url());
+        deployment.metadata.annotations.as_mut().unwrap().insert(
+            "gitops.operator.image_name".to_string(),
+            "no-such-image".to_string(),
+        );
+
+        let entry = Entry::new(&deployment).expect("Failed to create entry");
+
+        let app_link_path = format!("/tmp/app-{}-master", entry.name);
+        let manifest_link_path = format!("/tmp/manifest-{}-master", entry.name);
+        fs::remove_dir_all(&app_link_path).ok();
+        fs::remove_dir_all(&manifest_link_path).ok();
+
+        let processor = create_mock_processor(ssh_key);
+        let result = entry.process_deployment_with(&processor).await;
+
+        assert_eq!(result.status, Status::Failure, "got: {}", result.message);
+        assert_eq!(result.action, Action::Failed);
+        assert!(
+            result.message.contains("no-such-image"),
+            "Failure message should explain the mismatch, got: {}",
+            result.message
+        );
+
         fs::remove_dir_all(&app_link_path).ok();
         fs::remove_dir_all(&manifest_link_path).ok();
     }

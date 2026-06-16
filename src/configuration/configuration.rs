@@ -1,4 +1,4 @@
-use crate::files::{needs_patching, patch_deployment};
+use crate::files::{current_image_tag, needs_patching, patch_deployment};
 use crate::git::{clone_repo, commit_changes, get_latest_commit};
 use crate::github::GitHubBuildChecker;
 use crate::notifications::HttpNotificationSender;
@@ -22,12 +22,79 @@ use tracing::{error, info, warn};
 
 type Cache = reflector::Store<Deployment>;
 
+/// What the operator did (or could not do) for a deployment in a reconcile pass.
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
-pub enum State {
-    Queued,
-    Processing(String),
-    Success(String),
-    Failure(String),
+#[serde(rename_all = "snake_case")]
+pub enum Action {
+    /// The manifest was updated to a new image SHA and pushed.
+    Patched,
+    /// The manifest already pointed at the latest SHA; nothing to do.
+    UpToDate,
+    /// The deployment is disabled and was not processed.
+    Skipped,
+    /// Reconciliation failed before completing.
+    Failed,
+}
+
+/// Overall outcome of reconciling a single deployment.
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Status {
+    Success,
+    Failure,
+    Skipped,
+}
+
+/// Structured, per-deployment result returned by the `/reconcile` endpoint.
+/// Each entry makes it clear which deployment it refers to, what happened,
+/// and the SHA transition, instead of a bare free-text message.
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+pub struct ReconcileResult {
+    pub deployment: String,
+    pub namespace: String,
+    pub action: Action,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_sha: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_sha: Option<String>,
+    pub status: Status,
+    pub message: String,
+}
+
+impl ReconcileResult {
+    fn for_entry(entry: &Entry, action: Action, status: Status, message: String) -> Self {
+        Self {
+            deployment: entry.name.clone(),
+            namespace: entry.namespace.clone(),
+            action,
+            from_sha: None,
+            to_sha: None,
+            status,
+            message,
+        }
+    }
+
+    fn failure(entry: &Entry, message: impl Into<String>) -> Self {
+        Self::for_entry(entry, Action::Failed, Status::Failure, message.into())
+    }
+
+    fn skipped(entry: &Entry, message: impl Into<String>) -> Self {
+        Self::for_entry(entry, Action::Skipped, Status::Skipped, message.into())
+    }
+
+    fn success(
+        entry: &Entry,
+        action: Action,
+        from_sha: Option<String>,
+        to_sha: Option<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            from_sha,
+            to_sha,
+            ..Self::for_entry(entry, action, Status::Success, message.into())
+        }
+    }
 }
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
@@ -49,7 +116,6 @@ pub struct Config {
     pub registry_secret_namespace: Option<String>,
     pub github_token_secret_name: Option<String>,
     pub github_token_secret_namespace: Option<String>,
-    pub state: State,
 }
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
@@ -59,7 +125,6 @@ pub struct Entry {
     pub namespace: String,
     pub annotations: BTreeMap<String, String>,
     pub version: String,
-    #[serde(default)]
     pub config: Config,
 }
 
@@ -125,9 +190,19 @@ impl DeploymentProcessor {
         }
     }
 
+    /// Send a notification, logging (but not failing on) any delivery error.
+    async fn notify(&self, endpoint: &Option<String>, message: &str) {
+        if let Some(ep) = endpoint {
+            match self.notification_sender.send(message, ep).await {
+                Ok(_) => info!("Notification sent successfully"),
+                Err(e) => warn!("Failed to send notification: {:?}", e),
+            }
+        }
+    }
+
     /// Process a deployment entry
     #[tracing::instrument(name = "deployment_processor_process", skip(self, entry), fields())]
-    pub async fn process(&self, entry: &Entry) -> State {
+    pub async fn process(&self, entry: &Entry) -> ReconcileResult {
         info!("Processing: {}/{}", &entry.namespace, &entry.name);
 
         // Get notification endpoint
@@ -142,7 +217,7 @@ impl DeploymentProcessor {
             Ok(key) => key,
             Err(e) => {
                 error!("Failed to get SSH key: {:?}", e);
-                return State::Failure(format!("Failed to get SSH key: {:#?}", e));
+                return ReconcileResult::failure(entry, format!("Failed to get SSH key: {:#}", e));
             }
         };
 
@@ -240,95 +315,79 @@ impl DeploymentProcessor {
             Ok(sha) => sha,
             Err(e) => {
                 error!("Failed to get latest SHA: {:?}", e);
-                return State::Failure(format!("Failed to get latest SHA: {:#?}", e));
+                return ReconcileResult::failure(
+                    entry,
+                    format!("Failed to get latest SHA: {:#}", e),
+                );
             }
         };
 
         let deployment_path = format!("{}/{}", &manifest_repo_path, &entry.config.deployment_path);
 
-        if needs_patching(&deployment_path, &new_sha).unwrap_or(false) {
-            info!("Checking image: {}", &entry.config.image_name);
-            if let Some(ref checker) = image_checker {
-                let image_found = self
-                    .wait_for_image(entry, checker.as_ref(), &new_sha, registry_url, &endpoint)
-                    .await;
-                if !image_found {
-                    let message = format!(
-                        ":x: image: {}/{} with SHA: {} not found in registry after waiting for build",
-                        registry_url, &entry.config.image_name, &new_sha
-                    );
-                    if let Some(ref ep) = endpoint {
-                        if let Err(e) = self.notification_sender.send(&message, ep).await {
-                            warn!("Failed to send notification: {:?}", e);
-                        } else {
-                            info!("Notification sent successfully");
-                        }
-                    }
-                    error!("{}", message);
-                    return State::Failure(message);
-                }
-            }
-
-            match patch_deployment(&deployment_path, &container_image, &new_sha) {
-                Ok(_) => info!("File patched successfully for: {}", &entry.name),
-                Err(e) => {
-                    let _ = remove_dir_all(&manifest_repo_path);
-
-                    if let Some(ref ep) = endpoint {
-                        let message = format!(
-                            "Failed to patch deployment: {} to version: {}",
-                            &entry.name, &new_sha
-                        );
-                        if let Err(e) = self.notification_sender.send(&message, ep).await {
-                            warn!("Failed to send notification: {:?}", e);
-                        } else {
-                            info!("Notification sent successfully");
-                        }
-                    }
-
-                    error!("Failed to patch deployment: {:?}", e);
-                }
-            }
-
-            match commit_changes(&manifest_repo_path, &ssh_key_secret) {
-                Ok(_) => info!("Changes committed successfully"),
-                Err(e) => {
-                    let _ = remove_dir_all(&manifest_repo_path);
-                    error!(
-                        "Failed to commit changes, cleaning up manifests repo for next run: {:?}",
-                        e
-                    );
-                }
-            }
-
-            if let Some(ref ep) = endpoint {
-                let message = format!(
-                    "Deployment {} has been patched successfully to version: {}",
-                    &entry.name, &new_sha
-                );
-                if let Err(e) = self.notification_sender.send(&message, ep).await {
-                    warn!("Failed to send notification: {:?}", e);
-                } else {
-                    info!("Notification sent successfully");
-                }
-            }
-
-            let message = format!(
-                "Deployment: {} patched successfully to version: {}",
-                &entry.name, &new_sha
-            );
-            info!(message);
-
-            return State::Success(message);
-        } else {
-            let message = format!(
-                "Deployment: {} is up to date, proceeding to next deployment...",
-                &entry.name
-            );
-
-            info!(message);
-            return State::Success(message);
+        if !needs_patching(&deployment_path, &new_sha).unwrap_or(false) {
+            let message = format!("Deployment {} is up to date at {}", &entry.name, &new_sha);
+            info!("{}", message);
+            return ReconcileResult::success(entry, Action::UpToDate, None, Some(new_sha), message);
         }
+
+        info!("Checking image: {}", &container_image);
+        if let Some(ref checker) = image_checker {
+            let image_found = self
+                .wait_for_image(entry, checker.as_ref(), &new_sha, registry_url, &endpoint)
+                .await;
+            if !image_found {
+                let message = format!(
+                    ":x: image {}:{} not found in registry after waiting for build",
+                    &container_image, &new_sha
+                );
+                self.notify(&endpoint, &message).await;
+                error!("{}", message);
+                return ReconcileResult::failure(entry, message);
+            }
+        }
+
+        // Capture the SHA currently deployed before we overwrite it, so the
+        // result can report the from -> to transition.
+        let from_sha = current_image_tag(&deployment_path, &container_image)
+            .ok()
+            .flatten();
+
+        if let Err(e) = patch_deployment(&deployment_path, &container_image, &new_sha) {
+            let _ = remove_dir_all(&manifest_repo_path);
+            let message = format!(
+                "Failed to patch deployment {} to version {}: {:#}",
+                &entry.name, &new_sha, e
+            );
+            self.notify(&endpoint, &message).await;
+            error!("{}", message);
+            return ReconcileResult::failure(entry, message);
+        }
+        info!("File patched successfully for: {}", &entry.name);
+
+        if let Err(e) = commit_changes(
+            &manifest_repo_path,
+            &entry.config.observe_branch,
+            &ssh_key_secret,
+        ) {
+            let _ = remove_dir_all(&manifest_repo_path);
+            let message = format!(
+                "Failed to commit changes for {} (version {}): {:#}",
+                &entry.name, &new_sha, e
+            );
+            self.notify(&endpoint, &message).await;
+            error!("{}", message);
+            return ReconcileResult::failure(entry, message);
+        }
+        info!("Changes committed successfully");
+
+        let message = format!(
+            "Deployment {} patched successfully to version {}",
+            &entry.name, &new_sha
+        );
+        self.notify(&endpoint, &message).await;
+        info!("{}", message);
+
+        ReconcileResult::success(entry, Action::Patched, from_sha, Some(new_sha), message)
     }
 
     async fn get_notifications_endpoint(&self, entry: &Entry) -> Option<String> {
@@ -638,43 +697,85 @@ impl Entry {
                 registry_secret_namespace,
                 github_token_secret_name,
                 github_token_secret_namespace,
-                state: State::Queued,
             },
         })
     }
 
     /// Process deployment using the production dependencies
     #[tracing::instrument(name = "process_deployment", skip(self), fields())]
-    pub async fn process_deployment(self) -> State {
+    pub async fn process_deployment(self) -> ReconcileResult {
         let processor = DeploymentProcessor::production();
         processor.process(&self).await
     }
 
     /// Process deployment with a custom processor (for testing)
-    pub async fn process_deployment_with(&self, processor: &DeploymentProcessor) -> State {
+    pub async fn process_deployment_with(
+        &self,
+        processor: &DeploymentProcessor,
+    ) -> ReconcileResult {
         processor.process(self).await
     }
 
-    pub async fn reconcile(AxumState(store): AxumState<Cache>) -> Json<Vec<State>> {
+    pub async fn reconcile(AxumState(store): AxumState<Cache>) -> Json<Vec<ReconcileResult>> {
         tracing::info!("Starting reconciliation");
 
         let data: Vec<_> = store.state().iter().filter_map(|d| Entry::new(d)).collect();
 
         let mut handles: Vec<_> = vec![];
+        let mut skipped: Vec<ReconcileResult> = vec![];
 
         for entry in data {
             if !entry.config.enabled {
-                warn!("Config is disabled for deplyment: {}", &entry.name);
+                warn!("Config is disabled for deployment: {}", &entry.name);
+                skipped.push(ReconcileResult::skipped(
+                    &entry,
+                    format!(
+                        "Deployment {} is disabled (gitops.operator.enabled=false)",
+                        &entry.name
+                    ),
+                ));
                 continue;
             }
 
-            let deployment = entry.process_deployment();
-
-            handles.push(deployment);
+            handles.push(entry.process_deployment());
         }
 
-        let results = future::join_all(handles).await;
+        let mut results = future::join_all(handles).await;
+        results.extend(skipped);
 
         Json(results)
     }
+}
+
+/// Render a human-readable, aligned table summarising the deployments the
+/// operator currently tracks. Used by the `/status` endpoint.
+pub fn status_report(entries: &[Entry]) -> String {
+    let mut out = String::new();
+    out.push_str("gitops-operator status\n");
+    out.push_str(&format!("tracked deployments: {}\n\n", entries.len()));
+
+    if entries.is_empty() {
+        out.push_str("No deployments with gitops.operator annotations were found.\n");
+        return out;
+    }
+
+    let header = format!(
+        "{:<12} {:<24} {:<8} {:<8} {}\n",
+        "NAMESPACE", "DEPLOYMENT", "ENABLED", "BRANCH", "IMAGE"
+    );
+    out.push_str(&header);
+
+    for entry in entries {
+        out.push_str(&format!(
+            "{:<12} {:<24} {:<8} {:<8} {}:{}\n",
+            entry.namespace,
+            entry.name,
+            entry.config.enabled,
+            entry.config.observe_branch,
+            entry.container,
+            entry.version,
+        ));
+    }
+
+    out
 }

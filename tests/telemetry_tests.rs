@@ -2,9 +2,12 @@
 mod tests {
     use gitops_operator::telemetry::{init_subscriber, otlp_endpoint, resource};
     use opentelemetry::global;
+    use serial_test::serial;
     use std::sync::Once;
     use std::time::Duration;
     use tokio::time::timeout;
+
+    const OTLP_ENV: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 
     static INIT: Once = Once::new();
 
@@ -112,19 +115,36 @@ mod tests {
         assert!(!span.is_disabled()); // Since we're in a test environment
     }
 
+    // These two tests mutate the process-global OTLP endpoint env var, so they
+    // must not run concurrently (with each other or anything else reading it).
+    // `#[serial]` serializes them and we restore the prior value afterwards to
+    // avoid leaking state into the rest of the suite.
     #[test]
+    #[serial]
     fn test_otlp_endpoint_default() {
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT") };
+        let saved = std::env::var(OTLP_ENV).ok();
+        unsafe { std::env::remove_var(OTLP_ENV) };
+
         assert_eq!(otlp_endpoint(), "http://tempo.monitoring:4317");
+
+        match saved {
+            Some(v) => unsafe { std::env::set_var(OTLP_ENV, v) },
+            None => unsafe { std::env::remove_var(OTLP_ENV) },
+        }
     }
 
     #[test]
+    #[serial]
     fn test_otlp_endpoint_from_env() {
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317") };
+        let saved = std::env::var(OTLP_ENV).ok();
+        unsafe { std::env::set_var(OTLP_ENV, "http://localhost:4317") };
+
         assert_eq!(otlp_endpoint(), "http://localhost:4317");
-        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT") };
+
+        match saved {
+            Some(v) => unsafe { std::env::set_var(OTLP_ENV, v) },
+            None => unsafe { std::env::remove_var(OTLP_ENV) },
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]

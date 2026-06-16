@@ -19,8 +19,8 @@ struct WorkflowRun {
 }
 
 /// Parses a GitHub repository URL into "owner/repo" format.
-/// Supports both SSH (git@github.com:owner/repo.git) and HTTPS
-/// (https://github.com/owner/repo.git) URLs.
+/// Supports both SSH (`git@github.com:owner/repo.git`) and HTTPS
+/// (`https://github.com/owner/repo.git`) URLs.
 pub fn parse_github_repo(url: &str) -> Option<String> {
     // SSH format: git@github.com:owner/repo.git
     if let Some(rest) = url.strip_prefix("git@github.com:") {

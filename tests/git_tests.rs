@@ -121,6 +121,7 @@ mod tests {
         let _ = stage_and_push_changes(
             &test_repo.repo,
             "should not create empty commit",
+            "master",
             "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
         );
 
@@ -162,6 +163,7 @@ mod tests {
         let _ = stage_and_push_changes(
             &test_repo.repo,
             "Test commit",
+            "master",
             "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
         );
 
@@ -171,6 +173,61 @@ mod tests {
         let head = test_repo.repo.head().unwrap();
         let commit = head.peel_to_commit().unwrap();
         assert_eq!(commit.message().unwrap(), "Test commit");
+    }
+
+    #[test]
+    fn test_stage_and_push_changes_non_master_branch() {
+        // Regression: the push refspec and fast-forward ref were hardcoded to
+        // master, so a configured observe_branch other than master was silently
+        // ignored. This test commits on `develop` and asserts the bare remote
+        // receives the commit on refs/heads/develop.
+        let dir = TempDir::new().unwrap();
+        let run = |args: &[&str]| {
+            Command::new("git")
+                .args(args)
+                .current_dir(dir.path())
+                .output()
+                .unwrap_or_else(|_| panic!("git {:?} failed", args));
+        };
+
+        run(&["init"]);
+        run(&["checkout", "-b", "develop"]);
+        run(&["config", "user.name", "test"]);
+        run(&["config", "user.email", "test@example.com"]);
+        fs::write(dir.path().join("README.md"), "# Test").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-m", "init", "-n"]);
+
+        // Bare remote
+        let bare = TempDir::new().unwrap();
+        Command::new("git")
+            .args(["init", "--bare"])
+            .current_dir(bare.path())
+            .output()
+            .unwrap();
+        run(&["remote", "add", "origin", bare.path().to_str().unwrap()]);
+        run(&["push", "origin", "develop"]);
+
+        let repo = Repository::open(dir.path()).unwrap();
+
+        // A new change in the working tree that needs to be committed and pushed.
+        fs::write(dir.path().join("new.txt"), "content").unwrap();
+
+        stage_and_push_changes(
+            &repo,
+            "commit on develop",
+            "develop",
+            "aHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1kUXc0dzlXZ1hjUQ==",
+        )
+        .expect("push to develop should succeed");
+
+        // The bare remote must have the commit on refs/heads/develop.
+        let bare_repo = Repository::open_bare(bare.path()).unwrap();
+        let develop_ref = bare_repo
+            .find_reference("refs/heads/develop")
+            .expect("develop branch should exist on remote");
+        let commit = develop_ref.peel_to_commit().unwrap();
+        assert_eq!(commit.message().unwrap(), "commit on develop");
     }
 
     #[test]

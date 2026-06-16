@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use gitops_operator::files::{needs_patching, patch_deployment};
+    use gitops_operator::files::{current_image_tag, needs_patching, patch_deployment};
     use std::fs;
     use tempfile::TempDir;
 
@@ -112,5 +112,55 @@ spec:
         let result = patch_deployment("nonexistent/path/deployment.yaml", "test-image", "new-sha");
 
         assert!(result.is_err(), "Patch should fail with missing file");
+    }
+
+    #[test]
+    fn test_patch_deployment_no_matching_container() {
+        // Regression: when image_name matches no container, patch_deployment
+        // used to write the file unchanged and the reconcile reported success.
+        // It must now error so the result reflects a real failure.
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("deployment.yaml");
+
+        let yaml_content = create_test_deployment("test-image:old-sha");
+        fs::write(&file_path, yaml_content).unwrap();
+
+        let result = patch_deployment(file_path.to_str().unwrap(), "some-other-image", "new-sha");
+
+        assert!(
+            result.is_err(),
+            "Patch should fail when no container references the image"
+        );
+
+        // The file must be left untouched.
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(
+            content.contains("test-image:old-sha"),
+            "File should be unchanged when nothing matched"
+        );
+    }
+
+    #[test]
+    fn test_current_image_tag_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("deployment.yaml");
+
+        let yaml_content = create_test_deployment("test-image:abc1234");
+        fs::write(&file_path, yaml_content).unwrap();
+
+        let tag = current_image_tag(file_path.to_str().unwrap(), "test-image").unwrap();
+        assert_eq!(tag, Some("abc1234".to_string()));
+    }
+
+    #[test]
+    fn test_current_image_tag_no_match() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("deployment.yaml");
+
+        let yaml_content = create_test_deployment("test-image:abc1234");
+        fs::write(&file_path, yaml_content).unwrap();
+
+        let tag = current_image_tag(file_path.to_str().unwrap(), "nonexistent").unwrap();
+        assert_eq!(tag, None);
     }
 }
