@@ -26,15 +26,25 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
 anyhow = "1.0.102"
 serde = { version = "1.0.228", features = ["derive"] }
-k8s-openapi = { version = "0.27.1", features = ["latest"] }
-git2 = "0.20.4"
+k8s-openapi = { version = "0.28.0", features = ["latest"] }
+git2 = "0.21.0"
 serde_yaml = "0.9.34"
 base64 = "0.22.1"
 tracing-bunyan-formatter = "0.3.10"
 tracing-log = "0.2.0"
 openssl = { version = '0.10', features = ["vendored"] }
-uuid = { version = "1.23.2", features = ["v4"] }
-reqwest = { version = "0.12.28", features = ["json", "blocking"] }
+uuid = { version = "1.23.3", features = ["v4"] }
+# reqwest 0.13 changed default-tls to rustls+aws-lc-rs, which clashes with
+# kube's rustls+ring (two CryptoProviders -> rustls panics at client build).
+# Keep native-tls (OpenSSL, already vendored) to preserve a single TLS backend.
+reqwest = { version = "0.13.4", default-features = false, features = [
+    "json",
+    "blocking",
+    "query",
+    "native-tls",
+    "charset",
+    "http2",
+] }
 serde_json = "1.0.150"
 async-trait = "0.1"
 axum-prometheus = "0.10.0"
@@ -47,7 +57,7 @@ tracing-opentelemetry = { version = "0.33.0" }
 jemallocator = "0.5.4"
 
 [dependencies.kube]
-version = "3.1.0"
+version = "4.0.0"
 features = ["runtime"]
 
 [dev-dependencies]
@@ -58,7 +68,7 @@ mockall = "0.14.0"
 assert_matches = "1.5.0"
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }
-serial_test = "3.4.0"
+serial_test = "3.5.0"
 
 # local testing: ignore
 #git = "https://github.com/kube-rs/kube.git"

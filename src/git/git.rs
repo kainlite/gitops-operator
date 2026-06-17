@@ -315,7 +315,7 @@ pub fn get_latest_commit(
 
     debug!("Available remotes:");
     for remote_name in repo.remotes()?.iter() {
-        debug!("{}", remote_name.unwrap_or("invalid utf-8"));
+        debug!("{}", remote_name.ok().flatten().unwrap_or("invalid utf-8"));
     }
 
     // Create fetch options with verbose progress
