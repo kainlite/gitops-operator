@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.10.0](https://github.com/kainlite/gitops-operator/compare/v0.9.4...v0.10.0) (2026-06-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* the /reconcile response shape changed and the public State enum was replaced by ReconcileResult/Action/Status.
+
+### Features
+
+* structured reconcile API, status/health endpoints, and correctness fixes ([39060a9](https://github.com/kainlite/gitops-operator/commit/39060a90becae741dae64d474358062c9638591c))
+
 ## [0.9.4](https://github.com/kainlite/gitops-operator/compare/v0.9.3...v0.9.4) (2026-05-03)
 
 
