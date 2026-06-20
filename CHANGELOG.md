@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/kainlite/gitops-operator/compare/v0.10.0...v0.10.1) (2026-06-20)
+
+
+### Features
+
+* multi-container support, annotation type extraction, error-handling hardening ([100970e](https://github.com/kainlite/gitops-operator/commit/100970e34bbc2b3b9c640d11bb808c359f798d4a))
+
 ## [0.10.0](https://github.com/kainlite/gitops-operator/compare/v0.9.4...v0.10.0) (2026-06-17)
 
 
