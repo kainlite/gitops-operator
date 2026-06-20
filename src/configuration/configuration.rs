@@ -12,6 +12,7 @@ use axum::Json;
 use axum::extract::State as AxumState;
 use futures::future;
 use k8s_openapi::api::apps::v1::Deployment;
+use k8s_openapi::api::core::v1::Container;
 use kube::ResourceExt;
 use kube::runtime::reflector;
 use std::collections::BTreeMap;
@@ -517,10 +518,11 @@ impl DeploymentProcessor {
 
             match build_status {
                 BuildStatus::Running | BuildStatus::Queued => {
+                    // This arm only matches Running or Queued, so the fallback
+                    // is Queued by construction (no panicking unreachable!).
                     let status_str = match build_status {
                         BuildStatus::Running => "running",
-                        BuildStatus::Queued => "queued",
-                        _ => unreachable!(),
+                        _ => "queued",
                     };
 
                     info!(
@@ -594,20 +596,16 @@ impl DeploymentProcessor {
     }
 }
 
-impl Entry {
-    pub fn new(d: &Deployment) -> Option<Entry> {
-        let name = d.name_any();
-        let namespace = d.namespace()?;
-        let annotations = d.metadata.annotations.as_ref()?;
-        let tpl = d.spec.as_ref()?.template.spec.as_ref()?;
-        let img = tpl.containers.first()?.image.as_ref()?;
-        let splits = img.splitn(2, ':').collect::<Vec<_>>();
-        let (container, version) = match *splits.as_slice() {
-            [c, v] => (c.to_owned(), v.to_owned()),
-            [c] => (c.to_owned(), "latest".to_owned()),
-            _ => return None,
-        };
-
+impl Config {
+    /// Parse a deployment's `gitops.operator.*` annotations into a `Config`.
+    ///
+    /// Returns `None` when any *required* annotation is missing (the deployment
+    /// is then skipped by the operator). Optional annotations fall back to their
+    /// documented defaults.
+    pub fn from_annotations(
+        annotations: &BTreeMap<String, String>,
+        namespace: &str,
+    ) -> Option<Config> {
         let enabled = annotations
             .get("gitops.operator.enabled")?
             .trim()
@@ -623,81 +621,97 @@ impl Entry {
         let deployment_path = annotations
             .get("gitops.operator.deployment_path")?
             .to_string();
-        let observe_branch = annotations
-            .get("gitops.operator.observe_branch")
-            .unwrap_or(&"master".to_string())
-            .to_string();
-        let tag_type = annotations
-            .get("gitops.operator.tag_type")
-            .unwrap_or(&"long".to_string())
-            .to_string();
-
-        let tag_type = match tag_type.as_str() {
-            "short" => "short",
-            _ => "long",
-        }
-        .to_string();
-
         let ssh_key_name = annotations.get("gitops.operator.ssh_key_name")?.to_string();
         let ssh_key_namespace = annotations
             .get("gitops.operator.ssh_key_namespace")?
             .to_string();
 
-        let notifications_secret_name = annotations
-            .get("gitops.operator.notifications_secret_name")
-            .map(|name| name.to_string());
+        let observe_branch = annotations
+            .get("gitops.operator.observe_branch")
+            .map(String::as_str)
+            .unwrap_or("master")
+            .to_string();
+        let tag_type = match annotations
+            .get("gitops.operator.tag_type")
+            .map(String::as_str)
+        {
+            Some("short") => "short",
+            _ => "long",
+        }
+        .to_string();
 
-        let notifications_secret_namespace = annotations
-            .get("gitops.operator.notifications_secret_namespace")
-            .map(|name| name.to_string());
+        let optional = |key: &str| annotations.get(key).map(String::to_string);
 
-        let registry_url = annotations
-            .get("gitops.operator.registry_secret_url")
-            .map(|name| name.to_string());
+        Some(Config {
+            enabled,
+            namespace: namespace.to_string(),
+            app_repository,
+            manifest_repository,
+            image_name,
+            deployment_path,
+            observe_branch,
+            tag_type,
+            ssh_key_name,
+            ssh_key_namespace,
+            notifications_secret_name: optional("gitops.operator.notifications_secret_name"),
+            notifications_secret_namespace: optional(
+                "gitops.operator.notifications_secret_namespace",
+            ),
+            registry_url: optional("gitops.operator.registry_secret_url"),
+            registry_secret_name: optional("gitops.operator.registry_secret_name"),
+            registry_secret_namespace: optional("gitops.operator.registry_secret_namespace"),
+            github_token_secret_name: optional("gitops.operator.github_token_secret_name"),
+            github_token_secret_namespace: optional(
+                "gitops.operator.github_token_secret_namespace",
+            ),
+        })
+    }
+}
 
-        let registry_secret_name = annotations
-            .get("gitops.operator.registry_secret_name")
-            .map(|name| name.to_string());
+/// Pick the container the operator should track in a (possibly multi-container)
+/// pod: the first container whose image reference contains `image_name` (the
+/// same match the patcher uses), falling back to the first container. Returns
+/// its image reference without the tag, and the tag (`latest` if untagged).
+fn select_container(containers: &[Container], image_name: &str) -> Option<(String, String)> {
+    let target = containers
+        .iter()
+        .find(|c| {
+            c.image
+                .as_deref()
+                .is_some_and(|img| img.contains(image_name))
+        })
+        .or_else(|| containers.first())?;
 
-        let registry_secret_namespace = annotations
-            .get("gitops.operator.registry_secret_namespace")
-            .map(|name| name.to_string());
+    let img = target.image.as_ref()?;
+    match *img.splitn(2, ':').collect::<Vec<_>>().as_slice() {
+        [c, v] => Some((c.to_owned(), v.to_owned())),
+        [c] => Some((c.to_owned(), "latest".to_owned())),
+        _ => None,
+    }
+}
 
-        let github_token_secret_name = annotations
-            .get("gitops.operator.github_token_secret_name")
-            .map(|name| name.to_string());
+impl Entry {
+    pub fn new(d: &Deployment) -> Option<Entry> {
+        let name = d.name_any();
+        let namespace = d.namespace()?;
+        let annotations = d.metadata.annotations.as_ref()?;
 
-        let github_token_secret_namespace = annotations
-            .get("gitops.operator.github_token_secret_namespace")
-            .map(|name| name.to_string());
+        let config = Config::from_annotations(annotations, &namespace)?;
+
+        // Select the tracked container by image_name so multi-container pods are
+        // handled correctly, then derive its current image reference and tag.
+        let tpl = d.spec.as_ref()?.template.spec.as_ref()?;
+        let (container, version) = select_container(&tpl.containers, &config.image_name)?;
 
         info!("Processing: {}/{}", &namespace, &name);
 
         Some(Entry {
             name,
-            namespace: namespace.clone(),
+            namespace,
             annotations: annotations.clone(),
             container,
             version,
-            config: Config {
-                enabled,
-                namespace: namespace.clone(),
-                app_repository,
-                manifest_repository,
-                image_name,
-                deployment_path,
-                observe_branch,
-                tag_type,
-                ssh_key_name,
-                ssh_key_namespace,
-                notifications_secret_name,
-                notifications_secret_namespace,
-                registry_url,
-                registry_secret_name,
-                registry_secret_namespace,
-                github_token_secret_name,
-                github_token_secret_namespace,
-            },
+            config,
         })
     }
 

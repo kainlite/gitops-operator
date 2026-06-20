@@ -163,4 +163,44 @@ spec:
         let tag = current_image_tag(file_path.to_str().unwrap(), "nonexistent").unwrap();
         assert_eq!(tag, None);
     }
+
+    #[test]
+    fn test_patch_deployment_multi_container_patches_only_target() {
+        // Issue #8: in a multi-container pod, only the container whose image
+        // matches image_name should be patched; sidecars must be left alone.
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("deployment.yaml");
+
+        let yaml = r#"apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multi
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+      - name: sidecar
+        image: fluentd:v1.16
+      - name: app
+        image: ghcr.io/org/app:old-sha
+"#;
+        fs::write(&file_path, yaml).unwrap();
+
+        let result = patch_deployment(file_path.to_str().unwrap(), "ghcr.io/org/app", "new-sha");
+        assert!(
+            result.is_ok(),
+            "patch should succeed for the matching container"
+        );
+
+        let updated = fs::read_to_string(&file_path).unwrap();
+        assert!(
+            updated.contains("ghcr.io/org/app:new-sha"),
+            "target container should be updated"
+        );
+        assert!(
+            updated.contains("fluentd:v1.16"),
+            "sidecar container must be left unchanged"
+        );
+    }
 }

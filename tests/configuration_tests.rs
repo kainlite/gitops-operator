@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use gitops_operator::configuration::{
-        Action, Entry, Status, build_container_image, status_report,
+        Action, Config, Entry, Status, build_container_image, status_report,
     };
     use k8s_openapi::api::apps::v1::Deployment;
     use std::collections::BTreeMap;
@@ -643,5 +643,99 @@ mod tests {
         let report = status_report(&[]);
         assert!(report.contains("tracked deployments: 0"), "{report}");
         assert!(report.contains("No deployments"), "{report}");
+    }
+
+    // ---- Issue #15: annotation parsing extracted into Config::from_annotations ----
+
+    #[test]
+    fn test_config_from_annotations_required_and_defaults() {
+        let ann = minimal_annotations(true);
+        let config = Config::from_annotations(&ann, "ns1").expect("config");
+        assert!(config.enabled);
+        assert_eq!(config.namespace, "ns1");
+        assert_eq!(config.image_name, "org/app");
+        assert_eq!(config.observe_branch, "master"); // default
+        assert_eq!(config.tag_type, "long"); // default
+        assert_eq!(config.registry_url, None); // optional, absent
+    }
+
+    #[test]
+    fn test_config_from_annotations_missing_required_returns_none() {
+        let mut ann = minimal_annotations(true);
+        ann.remove("gitops.operator.ssh_key_name");
+        assert!(Config::from_annotations(&ann, "ns1").is_none());
+    }
+
+    #[test]
+    fn test_config_from_annotations_optional_and_tag_type() {
+        let mut ann = minimal_annotations(true);
+        ann.insert(
+            "gitops.operator.observe_branch".to_string(),
+            "develop".to_string(),
+        );
+        ann.insert("gitops.operator.tag_type".to_string(), "short".to_string());
+        ann.insert(
+            "gitops.operator.registry_secret_url".to_string(),
+            "https://ghcr.io".to_string(),
+        );
+        let config = Config::from_annotations(&ann, "ns1").unwrap();
+        assert_eq!(config.observe_branch, "develop");
+        assert_eq!(config.tag_type, "short");
+        assert_eq!(config.registry_url, Some("https://ghcr.io".to_string()));
+    }
+
+    #[test]
+    fn test_config_from_annotations_invalid_tag_type_falls_back_to_long() {
+        let mut ann = minimal_annotations(true);
+        ann.insert(
+            "gitops.operator.tag_type".to_string(),
+            "garbage".to_string(),
+        );
+        let config = Config::from_annotations(&ann, "ns1").unwrap();
+        assert_eq!(config.tag_type, "long");
+    }
+
+    // ---- Issue #8: multi-container pods ----
+
+    #[test]
+    fn test_entry_selects_tracked_container_in_multi_container_pod() {
+        // The tracked image is the SECOND container; the operator must select it
+        // (by image_name), not blindly take the first container (a sidecar).
+        let annotations = minimal_annotations(true); // image_name = "org/app"
+
+        let deployment = Deployment {
+            metadata: ObjectMeta {
+                name: Some("multi".to_string()),
+                namespace: Some("default".to_string()),
+                annotations: Some(annotations),
+                ..ObjectMeta::default()
+            },
+            spec: Some(DeploymentSpec {
+                template: PodTemplateSpec {
+                    spec: Some(PodSpec {
+                        containers: vec![
+                            Container {
+                                name: "sidecar".to_string(),
+                                image: Some("fluentd:v1.16".to_string()),
+                                ..Container::default()
+                            },
+                            Container {
+                                name: "app".to_string(),
+                                image: Some("ghcr.io/org/app:abc1234".to_string()),
+                                ..Container::default()
+                            },
+                        ],
+                        ..PodSpec::default()
+                    }),
+                    ..PodTemplateSpec::default()
+                },
+                ..DeploymentSpec::default()
+            }),
+            ..Deployment::default()
+        };
+
+        let entry = Entry::new(&deployment).expect("entry");
+        assert_eq!(entry.container, "ghcr.io/org/app");
+        assert_eq!(entry.version, "abc1234");
     }
 }
