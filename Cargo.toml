@@ -29,7 +29,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 k8s-openapi = { version = "0.28.0", features = ["latest"] }
 git2 = "0.21.0"
 serde_yaml = "0.9.34"
-base64 = "0.22.1"
+base64 = "0.23.1"
 tracing-bunyan-formatter = "0.3.10"
 tracing-log = "0.2.0"
 openssl = { version = '0.10', features = ["vendored"] }
